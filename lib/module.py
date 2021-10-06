@@ -46,11 +46,11 @@ class ViewTransformer(nn.Module):
     def forward(self, xyz, M):
         """
         Args:
-            xyz (float tensor, (bs, p, 3)): view-space xyz-coordinates of points.
-            M (float tensor, (bs, 3, 4)): camera poses.
+            xyz (float tensor, (bs, p, 3)): point coordinates in view space.
+            M (float tensor, (bs, 3, 4)): camera pose.
 
         Returns:
-            xyz (float tensor, (bs, p, 3)): transformed xyz-coordinates of points.
+            xyz (float tensor, (bs, p, 3)): transformed point coordinates.
         """
         M = M.transpose(2, 1)
         R, t = M[:, :3], M[:, 3:]                       # (bs, 3/1, 3)
@@ -77,7 +77,7 @@ class Renderer(nn.Module):
     def forward(self, xyz, data, fov, h, w, denoise=False, return_uv=False):
         """
         Args:
-            xyz (float tensor, (bs, p, 3)): view-space xyz-coordinates of points.
+            xyz (float tensor, (bs, p, 3)): point coordinates in view space.
             data (float tensor, (bs, c, p)): point-associated data.
             fov (float tensor, (bs,)): vertical angular field of view (unit: rad).
             h (int): height of rendered data maps (unit: px).
@@ -163,13 +163,15 @@ class PointCloudEncoder(nn.Module):
 
         for i in range(self.n_levels):
             blocks = nn.ModuleList()
+            scale_factor = cfg['scale_factor'][i]
+            out_dim = cfg['dims'][i]
             for j in range(cfg['depth'][i]):
                 blocks.append(
                     GCNBlock(
                         cfg['block'],
                         in_dim=in_dim, 
-                        out_dim=cfg['dims'][i],
-                        scale_factor=cfg['scale_factor'][i],
+                        out_dim=out_dim,
+                        scale_factor=scale_factor,
                         radius=cfg['radius'][i][j],
                         k=cfg['k'][i][j],
                         aggregate=cfg.get('aggregate', 'max'),
@@ -178,19 +180,14 @@ class PointCloudEncoder(nn.Module):
                         res=cfg.get('res')
                     )
                 )
-                in_dim = cfg['dims'][i]
                 scale_factor = 1
+                in_dim = out_dim
             self.blocks.append(blocks)
 
-        if cfg.get('out_fc'):
-            if cfg.get('out_relu'):
-                self.out_fc = nn.Sequential(
-                    nn.Conv1d(in_dim, in_dim, 1), nn.ReLU(inplace=True),
-                )
-            else:
-                self.out_fc = nn.Conv1d(in_dim, in_dim, 1)
-        else:
-            self.out_fc = nn.Identity()
+        self.out_fc = nn.Sequential(
+            nn.Conv1d(in_dim, in_dim, 1),
+            nn.ReLU(inplace=True),
+        )
 
         self.up = PointUpsample(cfg.get('up', 'linear'))
 
@@ -251,14 +248,10 @@ class VGGDecoder(nn.Module):
             pretrained=cfg.get('pretrained', False)
         )
 
-        self.out_norm = cfg.get('out_norm')
-
     def forward(self, feats):
         if isinstance(feats, (list, tuple)):
             feats = feats[-1]
         rgb = self.dvgg(feats)
-        if self.out_norm:
-            rgb = (torch.tanh(rgb) + 1) / 2
         return rgb
 
 
@@ -327,8 +320,6 @@ class VGGAttNDecoder(nn.Module):
             nn.ReflectionPad2d(1), nn.Conv2d(64, 3, 3),
         )
 
-        self.out_norm = cfg.get('out_norm')
-
     def _pad(self, x, y):
         dh = y.size(-2) - x.size(-2)
         dw = y.size(-1) - x.size(-1)
@@ -370,9 +361,6 @@ class VGGAttNDecoder(nn.Module):
             x1 = feats_list[-5]
             x = torch.cat([self._pad(x, x1), x1], 1)
         rgb = self.stage1(x)
-
-        if self.out_norm:
-            rgb = (torch.tanh(rgb) + 1) / 2
         return rgb
 
 
@@ -510,8 +498,6 @@ class UNetDecoder(nn.Module):
         nn.Conv2d(out_dim, 3, 1, 1),
     )
 
-    self.out_norm = cfg.get('out_norm')
-
   def forward(self, feats):
     skips = []
     for i in range(self.n_levels):
@@ -520,8 +506,6 @@ class UNetDecoder(nn.Module):
     for i in range(self.n_levels - 1, -1, -1):
         feats = self.up_layers[i](feats, skips[i])
     rgb = self.out_conv(feats)
-    if self.out_norm:
-        rgb = (torch.tanh(rgb) + 1) / 2
     return rgb
 
 
@@ -576,7 +560,6 @@ class PointCloudDecoder(nn.Module):
             self.blocks.append(blocks)
 
         self.out_fc = nn.Conv1d(in_dim, 3, 1)
-        self.out_norm = cfg.get('out_norm')
 
     def forward(self, xyz_list, feats):
         """
@@ -603,8 +586,6 @@ class PointCloudDecoder(nn.Module):
                 _, feats = blocks[j](xyz, feats, parent_xyz)
                 xyz = parent_xyz
         rgb = self.out_fc(feats)
-        if self.out_norm:
-            rgb = (torch.tanh(rgb) + 1) / 2
         return rgb
 
 ###############################################################################
@@ -639,7 +620,7 @@ class AdaIN2DStylizer(nn.Module):
 class AdaAttN(nn.Module):
     """ Attention-weighted AdaIN (Liu et al., ICCV 21) """
 
-    def __init__(self, qk_dim, v_dim, project=False):
+    def __init__(self, qk_dim=None, v_dim=None, project=False):
         """
         Args:
             qk_dim (int): query and key size.
@@ -649,6 +630,8 @@ class AdaAttN(nn.Module):
         super(AdaAttN, self).__init__()
 
         if project:
+            assert qk_dim is not None and v_dim is not None, \
+                '[ERROR] qk_dim and v_dim must be given for feature projection'
             self.q_embed = nn.Conv1d(qk_dim, qk_dim, 1)
             self.k_embed = nn.Conv1d(qk_dim, qk_dim, 1)
             self.s_embed = nn.Conv1d(v_dim, v_dim, 1)
@@ -753,7 +736,10 @@ class Linear2DStylizer(nn.Module):
         self.vgg = NormalizedVGG(vgg_layer, pool=cfg.get('vgg_pool', 'max'))
 
         in_dim = cfg['in_dim']
-        assert in_dim == vgg_dims[vgg_layer - 1]
+        assert in_dim == vgg_dims[vgg_layer - 1], \
+            ('[ERROR] content feature dimension ({:d}) must match VGG '
+             'feature dimension ({:d})'.format(in_dim, vgg_dims[vgg_layer - 1])
+            )
         n_layers = cfg.get('n_embed_layers', 0)
 
         hid_dims = []
@@ -831,10 +817,22 @@ class AdaIN3DStylizer(nn.Module):
         self.vgg = NormalizedVGG(vgg_layer, pool=cfg.get('vgg_pool', 'max'))
 
         # content feature projection
-        if cfg.get('zip'):
+        n_layers = cfg.get('n_zip_layers', 0)
+        if n_layers > 0:
             out_dim = cfg.get('embed_dim', 32)
-            self.zipper = nn.Conv1d(cfg['in_dim'], out_dim, 1)
-            self.unzipper = nn.Conv1d(out_dim, cfg['in_dim'], 1)
+            zipper = [nn.Conv1d(cfg['in_dim'], out_dim, 1)]
+            unzipper = [nn.Conv1d(out_dim, cfg['in_dim'], 1)]
+            for i in range(n_layers - 1):
+                zipper = zipper + [
+                    nn.LeakyReLU(0.2, inplace=True),
+                    nn.Conv1d(out_dim, out_dim, 1),
+                ]
+                unzipper = [
+                    nn.Conv1d(out_dim, out_dim, 1),
+                    nn.LeakyReLU(0.2, inplace=True),
+                ] + unzipper
+            self.zipper = nn.Sequential(*zipper)
+            self.unzipper = nn.Sequential(*unzipper)
         else:
             out_dim = cfg['in_dim']
             self.zipper = self.unzipper = nn.Identity()
@@ -868,7 +866,7 @@ class AdaIN3DStylizer(nn.Module):
         gain, bias = affine.split(affine.size(1) // 2, -1)
         gain, bias = gain.unsqueeze(-1), bias.unsqueeze(-1)
         
-        # AdaIN
+        # AdaIN on projected content features
         feats = self.zipper(feats)
         feats = F.instance_norm(feats) * gain + bias
         feats = self.unzipper(feats)
@@ -890,7 +888,10 @@ class Linear3DStylizer(nn.Module):
         self.vgg = NormalizedVGG(vgg_layer, pool=cfg.get('vgg_pool', 'max'))
 
         in_dim = cfg['in_dim']
-        assert in_dim == vgg_dims[vgg_layer - 1]
+        assert in_dim == vgg_dims[vgg_layer - 1], \
+            ('[ERROR] content feature dimension ({:d}) must match VGG '
+             'feature dimension ({:d})'.format(in_dim, vgg_dims[vgg_layer - 1])
+            )
         n_layers = cfg.get('n_embed_layers', 0)
 
         # compress content and style features

@@ -39,7 +39,7 @@ style:
 
 train:
   batch_size: 8
-  n_itrs: 50000
+  n_itrs: 20000
 
   h: 224
   w: 224

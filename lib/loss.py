@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .module import AdaAttN
 from .vgg import NormalizedVGG
 
 
@@ -110,29 +111,13 @@ class VGGContentLoss(nn.Module):
                 '[ERROR] invalid VGG layer: {:s}'.format(l)
         self.layers = layers
 
+        self.adaattn = None
         if norm is not None:
             assert norm in ('instance', 'adaattn'), \
                 '[ERROR] invalid content normalization: {:s}'.format(norm)
+            if norm == 'adaattn':
+                self.adaattn = AdaAttN()
         self.norm = norm
-
-    def _adaattn(self, q, k, c, s):
-        shape = c.shape
-        q, k = q.flatten(2), k.flatten(2)
-        c, s = c.flatten(2), s.flatten(2)
-
-        q = F.instance_norm(q).transpose(2, 1)                  # (bs, n, qk)
-        k = F.instance_norm(k)                                  # (bs, qk, m)
-        s = s.transpose(2, 1)                                   # (bs, m, v)
-        attn = F.softmax(torch.bmm(q, k), -1)                   # (bs, n, m)
-
-        mean = torch.bmm(attn, s)                               # (bs, n, v)
-        var = F.relu(torch.bmm(attn, s ** 2) - mean ** 2)       # (bs, n, v)
-        mean = mean.transpose(2, 1)                             # (bs, v, n)
-        std = torch.sqrt(var).transpose(2, 1)                   # (bs, v, n)
-
-        cs = F.instance_norm(c) * std + mean                    # (bs, v, n)
-        cs = cs.reshape(shape)
-        return cs
 
     def forward(self, pred_feats, content_feats, style_feats=None):
         if self.norm == 'adaattn':
@@ -159,7 +144,7 @@ class VGGContentLoss(nn.Module):
             if i + 1 in self.layers:
                 if self.norm == 'adaattn':
                     s = style_feats[i]
-                    c = self._adaattn(q, k, c, s)
+                    c = self.adaattn(q, k, c, s)
                 elif self.norm == 'instance':
                     p = F.instance_norm(p)
                     c = F.instance_norm(c)

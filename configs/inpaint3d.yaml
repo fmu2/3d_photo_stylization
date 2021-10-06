@@ -4,7 +4,7 @@ encoder:
   arch: pcd
 
   pcd:
-    n_levels: 3
+    n_levels: 2
 
     aggregate: max
     norm: batch
@@ -17,32 +17,44 @@ encoder:
     in_k: 16
 
     block: mr
-    scale_factor: !!python/list [4, 4, 4]
-    dims: !!python/list [128, 256, 512]
-    depth: !!python/list [1, 2, 1]
-    radius: !!python/list [[[0.015, 0.025]], [[0.025, 0.05], [0.05, 0.05]], [[0.05, 0.1]]]
-    k: !!python/list [[[16, 16]], [[16, 16], [16, 16]], [[16, 16]]]
+    scale_factor: !!python/list [4, 4]
+    dims: !!python/list [128, 256]
+    depth: !!python/list [1, 1]
+    radius: !!python/list [[[0.015, 0.025]], [[0.025, 0.05]]]
+    k: !!python/list [[[16, 16]], [[16, 16]]]
 
     up: linear
     
 decoder:
-  arch: pcd
+  arch: unet
+
+  unet:
+    n_levels: 2
+
+    in_dim: 256
+    dims: !!python/list [128, 64]
+
+    down: conv
+    down_actv: leaky_relu
+    up: conv
+    up_actv: relu
+    norm: null
 
   pcd:
-    n_levels: 3
+    n_levels: 2
 
     aggregate: max
     norm: batch
     actv: relu
     res: true
 
-    in_dim: 512
+    in_dim: 256
 
     block: mr
-    dims: !!python/list [256, 128, 64]
-    depth: !!python/list [1, 2, 1]
-    radius: !!python/list [[[0.1, 0.05]], [[0.05, 0.05], [0.05, 0.025]], [[0.025, 0.015]]]
-    k: !!python/list [[[16, 16]], [[16, 16], [16, 16]], [[16, 16]]]
+    dims: !!python/list [128, 64]
+    depth: !!python/list [1, 1]
+    radius: !!python/list [[[0.05, 0.025]], [[0.025, 0.015]]]
+    k: !!python/list [[[16, 16]], [[16, 16]]]
     up: linear
 
 discriminator:
@@ -50,21 +62,24 @@ discriminator:
 
 loss:
   render:
-    terms: [pixel, content, distill]
-    weights: [1, 1, 10]
+    terms: [pixel, content]
+    weights: [1, 1]
 
     pixel:
       loss_type: l1
 
     content:
       loss_type: l1
-      layers: !!python/list [4]
+      layers: !!python/list [3]
       norm: null
 
     distill:
       loss_type: l1
-      layer: 4
+      layer: 3
       norm: null
+
+    match:
+      loss_type: l1
 
   ganD: hinge
   ganG: hinge
@@ -79,12 +94,12 @@ data:
   z_lim: !!python/list [-0.05, 0.15]
 
 train:
-  batch_size: 8
-  n_itrs: 20000
+  batch_size: 4
+  n_itrs: 50000
 
   h: 224
   w: 224
-  pcd_size: 262144
+  pcd_size: 112896 # 262144
 
   optim: adam
   lr: 1.e-4

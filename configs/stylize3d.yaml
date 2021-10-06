@@ -1,0 +1,105 @@
+3d: True
+
+encoder:
+  arch: pcd
+
+  pcd:
+    n_levels: 2
+
+    aggregate: max
+    norm: batch
+    actv: leaky_relu
+    res: true
+
+    in_block: mr_conv
+    in_dim: 64
+    in_k: 16
+    in_radius: 0.015
+
+    block: mr_block
+    scale_factor: !!python/list [4, 4]
+    dims: !!python/list [128, 256]
+    depth: !!python/list [1, 1]
+    k: !!python/list [[[16, 16]], [[16, 16]]]
+    radius: !!python/list [[[0.015, 0.025]], [[0.025, 0.05]]]
+
+    up: linear
+
+decoder:
+  arch: vgg
+
+  vgg:
+    layer: 3
+    in_dim: 256
+    up: bilinear
+    pretrained: False
+
+renderer:
+  arch: bilinear
+
+  bilinear: 
+    anti_aliasing: 4
+
+stylizer:
+  arch: adain
+
+  adain:
+    vgg_layer: 3
+    vgg_pool: max
+    in_dim: 256
+    embed_dim: 32
+    n_zip_layers: 3
+    n_embed_layers: 0
+    n_stat_layers: 0
+
+  adaattn:
+    vgg_layer: 3
+    vgg_pool: max
+    in_dim: 256
+    n_zip_layers: 2
+    n_embed_layers: 1
+
+loss:
+  terms: !!python/list [content, style]
+  weights: !!python/list [1, 0.02]
+
+  content:
+    loss_type: l1
+    layers: !!python/list [3]
+    norm: null
+    reduction: mean
+
+  style:
+    loss_type: mse
+    layers: !!python/list [2, 3]
+    stats: !!python/list [mean, gram]
+    reduction: sum
+
+data:
+  name: pcd
+  n_target_views: 1
+  x_lim: !!python/list [-0.05, 0.05]
+  y_lim: !!python/list [-0.05, 0.05]
+  z_lim: !!python/list [-0.05, 0.15]
+
+style:
+  name: wikiart
+  im_size: 256
+
+train:
+  batch_size: 8
+  n_itrs: 50000
+
+  h: 224
+  w: 224
+  pcd_size: 112896
+
+  optim: adam
+  lr: 1.e-4
+  beta1: 0.9
+  beta2: 0.999
+  decay_itrs: !!python/list [-1]
+  decay: 0.5
+
+freeze_enc: True
+freeze_dec: True

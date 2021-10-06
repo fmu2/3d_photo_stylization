@@ -94,14 +94,12 @@ class InpaintingTrainer(nn.Module):
                 ).squeeze(-1).reshape(bs, n_views, 3, -1)               # (bs, v, 3, p)
                 match = match.permute(0, 3, 1, 2).flatten(0, 1)         # (bs * p, v, 3)
                 # pairwise visibility matrix
-                viz_mtx = None
-                if viz is not None:
-                    viz_mtx = viz.unsqueeze(1) * viz.unsqueeze(2)       # (bs, v, v, p)
-                    viz_mtx = viz_mtx.permute(0, 3, 1, 2).flatten(0, 1) # (bs * p, v, v)
-                    viz_mtx = viz_mtx * ~torch.eye( # ignore self-pairings
-                        viz_mtx.size(-1), device=viz_mtx.device, 
-                        dtype=torch.bool
-                    )
+                viz_mtx = viz.unsqueeze(1) * viz.unsqueeze(2)           # (bs, v, v, p)
+                viz_mtx = viz_mtx.permute(0, 3, 1, 2).flatten(0, 1)     # (bs * p, v, v)
+                viz_mtx = viz_mtx * ~torch.eye( # ignore self-pairings
+                    viz_mtx.size(-1), device=viz_mtx.device, 
+                    dtype=torch.bool
+                )
 
             if 'tgt_rgb' in input_dict:
                 tgt_rgb = input_dict['tgt_rgb'].flatten(0, 1)
@@ -121,7 +119,9 @@ class InpaintingTrainer(nn.Module):
             match = viz_mtx = None
 
         # generator loss
-        loss_dict = self.render_loss(pred_rgb, tgt_rgb, pred_feats, match, viz_mtx)
+        loss_dict = self.render_loss(
+            pred_rgb, tgt_rgb, pred_feats, match, viz_mtx
+        )
         render_loss = loss_dict['total']
         G_loss = self.weights[0] * render_loss
         
@@ -223,7 +223,7 @@ class StylizationTrainer(nn.Module):
             # find correspondences across views
             match = viz_mtx = None
             if 'uv' in output_dict:
-                uv, viz = output_dict['uv'], output_dict.get('viz')     # (bs, v, p)
+                uv, viz = output_dict['uv'], output_dict['viz']         # (bs, v, p)
                 # multi-view correspondences
                 match = F.grid_sample(
                     pred_rgb, uv.flatten(0, 1).unsqueeze(-2), 
@@ -231,14 +231,12 @@ class StylizationTrainer(nn.Module):
                 ).squeeze(-1).reshape(bs, n_views, 3, -1)               # (bs, v, 3, p)
                 match = match.permute(0, 3, 1, 2).flatten(0, 1)         # (bs * p, v, 3)
                 # pairwise visibility matrix
-                viz_mtx = None
-                if viz is not None:
-                    viz_mtx = viz.unsqueeze(1) * viz.unsqueeze(2)       # (bs, v, v, p)
-                    viz_mtx = viz_mtx.permute(0, 3, 1, 2).flatten(0, 1) # (bs * p, v, v)
-                    viz_mtx = viz_mtx * ~torch.eye( # ignore self-pairings
-                        viz_mtx.size(-1), device=viz_mtx.device, 
-                        dtype=torch.bool
-                    )
+                viz_mtx = viz.unsqueeze(1) * viz.unsqueeze(2)           # (bs, v, v, p)
+                viz_mtx = viz_mtx.permute(0, 3, 1, 2).flatten(0, 1)     # (bs * p, v, v)
+                viz_mtx = viz_mtx * ~torch.eye( # ignore self-pairings
+                    viz_mtx.size(-1), device=viz_mtx.device, 
+                    dtype=torch.bool
+                )
 
             if 'tgt_rgb' in input_dict:
                 tgt_rgb = input_dict['tgt_rgb'].flatten(0, 1)

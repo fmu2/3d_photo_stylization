@@ -23,8 +23,6 @@ encoder:
     radius: !!python/list [[[0.015, 0.025]], [[0.025, 0.05]]]
     k: !!python/list [[[16, 16]], [[16, 16]]]
 
-    out_fc: true
-    out_relu: true
     up: linear
     
 decoder:
@@ -39,8 +37,6 @@ decoder:
     up: conv
     up_actv: relu
     norm: null
-
-    out_norm: false
 
 discriminator:
   spectral_norm: true
@@ -75,7 +71,7 @@ data:
 
 train:
   batch_size: 8
-  n_itrs: 50000
+  n_itrs: 20000
 
   h: 224
   w: 224

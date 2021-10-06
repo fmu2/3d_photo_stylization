@@ -1,0 +1,81 @@
+3d: False
+
+encoder:
+  arch: vgg
+
+  vgg:
+    layer: 3
+    vgg_pool: max
+
+decoder:
+  arch: vgg
+
+  vgg:
+    layer: 3
+    in_dim: 256
+    up: nearest
+    pretrained: False
+
+  vgg_attn:
+    layers: !!python/list [3, 4, 5]
+    up: nearest
+
+stylizer:
+  arch: adain
+
+  adain:
+    vgg_layer: 3
+    vgg_pool: max
+    in_dim: 256
+    embed_dim: 32
+    n_embed_layers: 0
+    n_zip_layers: 1
+
+  adaattn:
+    vgg_layers: !!python/list [3, 4, 5]
+    vgg_pool: max
+    n_embed_layers: 1
+
+  linear:
+    vgg_layer: 3
+    vgg_pool: max
+    in_dim: 256
+    n_embed_layers: 3
+
+loss:
+  terms: !!python/list [content, style]
+  weights: !!python/list [1, 0.02]
+
+  content:
+    loss_type: mse
+    layers: !!python/list [4]
+    norm: null
+    reduction: mean
+
+  style:
+    loss_type: mse
+    layers: !!python/list [1, 2, 3, 4]
+    stats: !!python/list [mean, gram]
+    reduction: sum
+
+data:
+  name: coco
+  im_size: 256
+
+style:
+  name: wikiart
+  im_size: 256
+
+train:
+  batch_size: 8
+  n_itrs: 100000
+
+  optim: adam
+  lr: 1.e-4
+  beta1: 0.9
+  beta2: 0.999
+  decay_itrs: !!python/list [-1]
+  decay: 0.5
+
+freeze_enc: True
+freeze_dec: True
