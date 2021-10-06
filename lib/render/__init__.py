@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from .render_utils import *
+from .utils import *
 
 
 class Splatter(nn.Module):

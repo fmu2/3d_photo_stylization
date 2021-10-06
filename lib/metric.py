@@ -1,6 +1,3 @@
-import math
-
-import cv2
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -73,50 +70,3 @@ class SSIM(nn.Module):
         ssim_map = tmp1 / tmp2
         ssim = ssim_map.mean()
         return ssim
-
-
-def eval_rmse(im1, im2):
-    assert im1.shape == im2.shape, 'input shape mismatch'
-    if len(im1.shape) == 2:
-        im1, im2 = im1[..., None], im2[..., None]
-
-    rmse = np.sqrt(np.mean((im1 - im2) ** 2)) / 255
-    return rmse
-
-
-def eval_psnr(im1, im2):
-    assert im1.shape == im2.shape, 'input shape mismatch'
-    if len(im1.shape) == 2:
-        im1, im2 = im1[..., None], im2[..., None]
-
-    mse = np.mean((im1 - im2) ** 2) + 1e-8
-    psnr = 20 * np.log10(255 / np.sqrt(mse))
-    return psnr
-
-
-def eval_ssim(im1, im2, kernel_size=11, sigma=1.5):
-    assert im1.shape == im2.shape, 'input shape mismatch'
-    if len(im1.shape) == 2:
-        im1, im2 = im1[..., None], im2[..., None]
-
-    c1, c2 = 0.01 ** 2, 0.03 ** 2
-    kernel = cv2.getGaussianKernel(kernel_size, sigma)
-    kernel = np.matmul(kernel, kernel.T)
-    n = kernel_size // 2
-
-    mu1 = cv2.filter2D(im1, -1, kernel)[n:-n, n:-n]
-    mu2 = cv2.filter2D(im2, -1, kernel)[n:-n, n:-n]
-
-    im1_sq, im2_sq = im1 ** 2, im2 ** 2
-    mu1_sq, mu2_sq = mu1 ** 2, mu2 ** 2
-    im1_im2, mu1_mu2 = im1 * im2, mu1 * mu2
-
-    sigma1_sq = cv2.filter2D(im1_sq, -1, kernel)[n:-n, n:-n] - mu1_sq
-    sigma2_sq = cv2.filter2D(im2_sq, -1, kernel)[n:-n, n:-n] - mu2_sq
-    sigma12 = cv2.filter2D(im1_im2, -1, kernel)[n:-n, n:-n] - mu1_mu2
-
-    tmp1 = (2 * mu1_mu2 + c1) * (2 * sigma12 + c2)
-    tmp2 = (mu1_sq + mu2_sq + c1) * (sigma1_sq + sigma2_sq + c2)
-    ssim_map = tmp1 / tmp2
-    ssim = ssim.mean()
-    return ssim
