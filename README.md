@@ -43,6 +43,7 @@ python setup_pointnet2.py build_ext --inplace
 ```
 
 - Prepare datasets
+
 Download the pre-processed COCO2014 dataset [here](https://drive.google.com/drive/folders/1qtv-fBrCJXT93w0QoFbt8YqeI09pS8EM?usp=sharing) and the WikiArt dataset [here](https://drive.google.com/drive/folders/1cwjSJaNJyRqQI-2wmFWNwgxkN6pUOy6k?usp=sharing). Unzip the files.
 ```shell
 cd coco_pcd
@@ -65,7 +66,7 @@ Images from the COCO2014 training split are resized to 448 x 448 and converted i
 │
 └───data
 │   └───coco_pcd/
-│   │	  └───train/
+│   │   └───train/
 │   │   │   └───ldi/
 │   │   │   │   └───ldi/
 │   │   │   │   │   │   COCO_train2014_000000XXXXXX.mat
@@ -87,7 +88,7 @@ Images from the COCO2014 training split are resized to 448 x 448 and converted i
 │   │   │   │   XXX.jpg
 │   │   │   │   ...
 └───configs
-│   │	  └───ablation/
+│   │   └───ablation/
 │   │   │   │   inpaint3d_r3_pixel_content.yaml
 │   │   │   │   inpaint3d_r3_pixel_content_match.yaml
 │   │   │   │   ...
@@ -115,12 +116,12 @@ Note that the job name needs to exactly match that of a pre-trained image recons
 
 ## Related Code Repos
 
-Our code relies heavily on the following repos.
+Our code relies heavily on the following repos:
 * LeReS <https://github.com/aim-uofa/AdelaiDepth/tree/main/LeReS>
 * 3d-photo-inpainting <https://github.com/vt-vl-lab/3d-photo-inpainting>
 * Pointnet2.PyTorch <https://github.com/sshaoshuai/Pointnet2.PyTorch>
 
-Our code is inspired by the following repos.
+Our code is inspired by the following repos:
 * 3d-ken-burns <https://github.com/sniklaus/3d-ken-burns>
 * softmax-splatting <https://github.com/sniklaus/softmax-splatting>
 * deep_gcns_torch <https://github.com/lightaime/deep_gcns_torch>
@@ -134,7 +135,7 @@ Our code is inspired by the following repos.
 ## References
 ```
 @inproceedings{Wei2021CVPR,
-	author = {Yin, Wei and Zhang, Jianming and Wang, Oliver and Niklaus, Simon and Mai, Long and Chen, Simon and Shen, Chunhua},
+ author = {Yin, Wei and Zhang, Jianming and Wang, Oliver and Niklaus, Simon and Mai, Long and Chen, Simon and Shen, Chunhua},
   title = {Learning to Recover 3D Scene Shape from a Single Image},
   booktitle = {IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
   year = {2021}
