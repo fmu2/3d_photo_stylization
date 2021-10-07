@@ -109,13 +109,13 @@ Images from the COCO2014 training split are resized to 448 x 448 and converted i
 ### Training
 To train the encoder-decoder network for image reconstruction, run
 ```shell
-python train_inpaint.py -d data/coco_pcd -c configs/{file_name}.yaml -n {job_name} -g {gpu_id}
+python train_inpaint.py -d {data_path} -c configs/{file_name}.yaml -n {job_name} -g {gpu_id}
 ```
 The latest model checkpoint `inpaint-last.pth` and the config file `inpaint-config.yaml` will be saved in `log/{job_name}`.
 
 To train the stylization module for style transfer, run
 ```shell
-python train_stylize.py -d data/coco_pcd -s data/wikiart -c configs/{file_name}.yaml -n {job_name} -g {gpu_id}
+python train_stylize.py -d {data_path} -s {style_path} -c configs/{file_name}.yaml -n {job_name} -g {gpu_id}
 ```
 Note that the job name needs to exactly match that of a pre-trained image reconstruction model. The latest model checkpoint `stylize-last.pth` and the config file `stylize-config.yaml` will be saved in `log/{job_name}`.
 
