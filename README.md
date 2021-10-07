@@ -31,9 +31,19 @@ cd 3d_photo_stylization
 conda create -n 3d_photo_stylization python=3.7
 conda activate 3d_photo_stylization
 conda install -c pytorch pytorch==1.7.1 torchvision==0.8.2 cudatoolkit=11.0
-conda install -c conda-forge tensorboardx
-conda install -c anaconda scipy
-conda install -c anaconda pyyaml
+conda install -c conda-forge tensorboard tensorboardx
+conda install -c anaconda scipy pyyaml
+```
+
+- (Optional) Install packages for model evaluation
+```shell
+conda install -c conda-forge ffmpeg imageio imageio-ffmpeg
+```
+
+- (Optional) Install packages for point cloud generation and visualization
+```shell
+conda install -c conda-forge plyfile matplotlib
+conda install -c open3d-admin open3d
 ```
 
 - Compile C++ and CUDA extension
@@ -98,18 +108,59 @@ Images from the COCO2014 training split are resized to 448 x 448 and converted i
 
 ### Training
 To train the encoder-decoder network for image reconstruction, run
-```
+```shell
 python train_inpaint.py -d data/coco_pcd -c configs/{file_name}.yaml -n {job_name} -g {gpu_id}
 ```
 The latest model checkpoint `inpaint-last.pth` and the config file `inpaint-config.yaml` will be saved in `log/{job_name}`.
 
 To train the stylization module for style transfer, run
-```
+```shell
 python train_stylize.py -d data/coco_pcd -s data/wikiart -c configs/{file_name}.yaml -n {job_name} -g {gpu_id}
 ```
 Note that the job name needs to exactly match that of a pre-trained image reconstruction model. The latest model checkpoint `stylize-last.pth` and the config file `stylize-config.yaml` will be saved in `log/{job_name}`.
 
 ### Evaluation
+
+- point cloud rendering
+
+We support real-time rasterization of the raw point cloud (i.e., without an encoder-decoder pass) for novel view synthesis. One can regard this as the rendering step of 3DPhoto. Run
+```shell
+python test_ldi_render.py -n {job_name} -g {gpu_id} -ldi {ldi_path} -cam {cam_motion} -x {x_bounds} -y {y_bounds} -z {z_bounds} -f {num_frames}
+```
+
+The output video may be found at `test/out/ldi_render/{job_name}_{cam_motion}`.
+
+- novel view synthesis with the encoder-decoder model
+
+Our encoder-decoder backbone, when run without style input, is able to perform high-quality novel view synthesis at interactive rate. Run
+```shell
+python test_ldi_model.py -n {job_name} -g {gpu_id} -ldi {ldi_path} -cam {cam_motion} -x {x_bound} -y {y_bound} -z {z_bound} -f {num_frames}
+```
+
+Note that this is an intermediate step of our style transfer pipeline and is not optimized for synthesis quality. Running this code will also generate the raw point cloud rendering (see above) for reference. The output videos may be found at `test/out/ldi_model/{job_name}_{cam_motion}`.
+
+- style transfer
+
+This is our main objective. Given an inpainted 3D point cloud and a style image, our model synthesizes at interactive rate a stylized 3D photo that is both perceptually pleasing and geometrically consistent. Run
+```shell
+python test_ldi_model.py -n {job_name} -g {gpu_id} -ldi {ldi_path} -s {style_path} -ss {style_size} -cam {cam_motion} -x {x_bound} -y {y_bound} -z {z_bound} -f {num_frames}
+```
+
+Running this code will also generate the raw point cloud rendering (see above) for reference. The output videos may be found at `test/out/ldi_model/{job_name}_{style_name}_{cam_motion}`.
+
+### Point cloud visualization
+
+To visualize an inpainted 3D point cloud, run
+```shell
+python test_ldi_pcd.py -n {job_name} -ldi {ldi_path}
+```
+
+One may also visualize the point cloud in NDC space by running
+```shell
+python test_ldi_pcd.py -n {job_name} -ldi {ldi_path} -plot -ds 10
+```
+
+The saved point cloud (in `.ply` format) and NDC-space visualization (in `.png` format) may be found at `test/out/ldi_pcd/{job_name}`.
 
 ## Contact
 [Fangzhou Mu](http://pages.cs.wisc.edu/~fmu/) (fmu2@wisc.edu)

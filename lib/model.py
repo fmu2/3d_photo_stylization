@@ -68,7 +68,8 @@ class Model3D(nn.Module):
         return xyz_ndc
 
 
-    def forward(self, input_dict, h=224, w=None, pcd_size=None, pcd_scale=None):
+    def forward(self, input_dict, h=224, w=None, pcd_size=None, pcd_scale=None,
+                rgb_only=False):
         """
         Args:
             input_dict (dict):
@@ -84,6 +85,7 @@ class Model3D(nn.Module):
             w (int): width of rendered images.
             pcd_size (int): number of points to draw for point cloud processing.
             pcd_scale (float): point cloud scale.
+            rgb_only (bool): if True, only return RGB images.
 
         Returns:
             output_dict (dict):
@@ -151,7 +153,7 @@ class Model3D(nn.Module):
                 # 1) rasterize featurized point cloud to novel view
                 # 2) decode 2D feature maps into RGB image
                 pred_dict = self.renderer(
-                    new_xyz, up_feats, fov, h, w, return_uv=True
+                    new_xyz, up_feats, fov, h, w, return_uv=(not rgb_only)
                 )
                 pred_feats = pred_dict['data']
                 pred_rgb = self.decoder(pred_feats)
@@ -159,17 +161,23 @@ class Model3D(nn.Module):
                 # 1) decode featurized point cloud into RGB point cloud
                 # 2) rasterize RGB point cloud to novel view
                 rgb = self.decoder(xyz_ndc_list, feats)
+                data = rgb
+                if not rgb_only:
+                    data = torch.cat([data, up_feats], 1)
                 pred_dict = self.renderer(
-                    new_xyz, torch.cat([rgb, up_feats], 1), fov, h, w, 
-                    return_uv=True
+                    new_xyz, data, fov, h, w, return_uv=(not rgb_only)
                 )
-                pred_feats = pred_dict['data'][:, 3:]
-                pred_rgb = pred_dict['data'][:, :3]
+                pred_feats = None
+                pred_rgb = pred_dict['data']
+                if not rgb_only:
+                    pred_feats = pred_rgb[:, 3:]
+                    pred_rgb = pred_rgb[:, :3]
 
-            pred_feats_list.append(pred_feats)
             pred_rgb_list.append(pred_rgb)
-            uv_list.append(pred_dict['uv'])
-            viz_list.append(pred_dict['viz'])
+            if not rgb_only:
+                pred_feats_list.append(pred_feats)
+                uv_list.append(pred_dict['uv'])
+                viz_list.append(pred_dict['viz'])
             
             # rasterize RGB point cloud
             tgt_dict = self.renderer(
@@ -177,17 +185,19 @@ class Model3D(nn.Module):
             ) 
             tgt_rgb_list.append(tgt_dict['data'])
 
-        pred_feats = torch.stack(pred_feats_list, 1)    # (bs, v, c, hc, wc)
-        pred_rgb = torch.stack(pred_rgb_list, 1)        # (bs, v, 3, h, w)
-        tgt_rgb = torch.stack(tgt_rgb_list, 1)          # (bs, v, 3, h, w)
-        output_dict['pred_feats'] = pred_feats
+        pred_rgb = torch.stack(pred_rgb_list, 1)            # (bs, v, 3, h, w)
+        tgt_rgb = torch.stack(tgt_rgb_list, 1)              # (bs, v, 3, h, w)
         output_dict['pred_rgb'] = pred_rgb
         output_dict['tgt_rgb'] = tgt_rgb
-        if n_views > 1:
-            uv = torch.stack(uv_list, 1)                # (bs, v, p, 2)
-            viz = torch.stack(viz_list, 1)              # (bs, v, p)
-            output_dict['uv'] = uv
-            output_dict['viz'] = viz
+
+        if not rgb_only:
+            pred_feats = torch.stack(pred_feats_list, 1)    # (bs, v, c, hc, wc)
+            output_dict['pred_feats'] = pred_feats
+            if n_views > 1:
+                uv = torch.stack(uv_list, 1)                # (bs, v, p, 2)
+                viz = torch.stack(viz_list, 1)              # (bs, v, p)
+                output_dict['uv'] = uv
+                output_dict['viz'] = viz
 
         return output_dict
 
@@ -239,12 +249,13 @@ class Model2D(nn.Module):
         params = [p for p in self.parameters() if p.requires_grad]
         return params
 
-    def forward(self, input_dict):
+    def forward(self, input_dict, rgb_only=False):
         """
         Args:
             input_dict (dict):
                 rgb (float tensor, (bs, 3, h, w)): input images.
                 style ((optional) float tensor, (bs, 3, h, w)): style images.
+            rgb_only (bool): if True, only return predicted images.
 
         Returns:
             output_dict (dict):
@@ -265,7 +276,7 @@ class Model2D(nn.Module):
         # reconstruction
         pred_rgb = self.decoder(feats)
 
-        output_dict['pred_feats'] = feats
         output_dict['pred_rgb'] = pred_rgb
-
+        if not rgb_only:
+            output_dict['pred_feats'] = feats
         return output_dict
