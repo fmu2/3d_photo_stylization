@@ -6,9 +6,8 @@ stylizer:
   adaattn:
     vgg_layer: 4
     vgg_pool: max
-    in_dim: 512
     n_zip_layers: 2
-    project: true
+    pyramid: true
 
 loss:
   terms: !!python/list [content, style, match]
@@ -16,7 +15,7 @@ loss:
 
   content:
     loss_type: l1
-    layers: !!python/list [4]
+    layers: !!python/list [3, 4]
     norm: adaattn
     reduction: mean
 

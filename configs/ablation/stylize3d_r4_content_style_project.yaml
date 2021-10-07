@@ -4,30 +4,26 @@ stylizer:
   arch: adaattn
 
   adaattn:
-    vgg_layer: 3
+    vgg_layer: 4
     vgg_pool: max
-    in_dim: 256
     n_zip_layers: 2
-    project: true
+    pyramid: false
 
 loss:
-  terms: !!python/list [content, style, match]
-  weights: !!python/list [1, 0.3, 1]
+  terms: !!python/list [content, style]
+  weights: !!python/list [1, 0.3]
 
   content:
     loss_type: l1
-    layers: !!python/list [3]
+    layers: !!python/list [3, 4]
     norm: adaattn
     reduction: mean
 
   style:
     loss_type: mse
-    layers: !!python/list [2, 3]
+    layers: !!python/list [2, 3, 4]
     stats: !!python/list [mean, std]
     reduction: mean
-
-  match:
-    loss_type: l1
 
 data:
   name: pcd

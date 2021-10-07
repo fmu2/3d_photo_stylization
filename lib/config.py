@@ -262,8 +262,7 @@ STYLIZE3D_DEFAULTS = {
         'adain': {
             'vgg_layer': 3,
             'vgg_pool': 'mean',
-            'in_dim': 256,
-            'zip': False,
+            'n_zip_layers': 2,
         },
     },
 

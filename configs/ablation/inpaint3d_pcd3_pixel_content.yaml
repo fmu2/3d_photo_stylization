@@ -23,29 +23,36 @@ encoder:
     radius: !!python/list [[[0.015, 0.025]], [[0.025, 0.05]]]
     k: !!python/list [[[16, 16]], [[16, 16]]]
 
-    out_relu: true
+    out_relu: false
     up: linear
     
 decoder:
-  arch: unet
+  arch: pcd
 
-  unet:
+  pcd:
     n_levels: 2
 
+    aggregate: max
+    norm: batch
+    actv: relu
+    res: true
+
     in_dim: 256
-    down: conv
-    down_actv: leaky_relu
-    up: conv
-    up_actv: relu
-    norm: null
+
+    block: mr
+    dims: !!python/list [128, 64]
+    depth: !!python/list [1, 1]
+    radius: !!python/list [[[0.05, 0.025]], [[0.025, 0.015]]]
+    k: !!python/list [[[16, 16]], [[16, 16]]]
+    up: linear
 
 discriminator:
   spectral_norm: true
 
 loss:
   render:
-    terms: [pixel, content, distill]
-    weights: [1, 1, 10]
+    terms: [pixel, content]
+    weights: [1, 1]
 
     pixel:
       loss_type: l1
@@ -55,11 +62,6 @@ loss:
       layers: !!python/list [3]
       norm: null
 
-    distill:
-      loss_type: l1
-      layer: 3
-      norm: null
-
   ganD: hinge
   ganG: hinge
 
@@ -67,7 +69,7 @@ loss:
 
 data:
   name: pcd
-  n_target_views: 2
+  n_target_views: 1
   x_lim: !!python/list [-0.05, 0.05]
   y_lim: !!python/list [-0.05, 0.05]
   z_lim: !!python/list [-0.05, 0.15]

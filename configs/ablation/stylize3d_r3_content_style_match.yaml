@@ -6,7 +6,7 @@ stylizer:
   adaattn:
     vgg_layer: 3
     vgg_pool: max
-    n_zip_layers: 2
+    n_zip_layers: 0
     pyramid: false
 
 loss:

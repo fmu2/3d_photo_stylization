@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 from .vgg import NormalizedVGG, make_dvgg
 from .render import view2ndc, Splatter
-from .pointnet2 import PointUpsample
+from .pointnet2 import PointUpsample, PointDownsample
 from .filter import PartialMeanFilter
 from .layer import *
 
@@ -184,10 +184,8 @@ class PointCloudEncoder(nn.Module):
                 in_dim = out_dim
             self.blocks.append(blocks)
 
-        self.out_fc = nn.Sequential(
-            nn.Conv1d(in_dim, in_dim, 1),
-            nn.ReLU(inplace=True),
-        )
+        self.out_fc = nn.Conv1d(in_dim, in_dim, 1)
+        self.out_relu = cfg.get('out_relu')
 
         self.up = PointUpsample(cfg.get('up', 'linear'))
 
@@ -200,6 +198,8 @@ class PointCloudEncoder(nn.Module):
             xyz_list.append(xyz)
             feats_list.append(feats)
         feats_list[-1] = self.out_fc(feats_list[-1])
+        if self.out_relu:
+            feats_list[-1] = F.relu(feats_list[-1], inplace=True)
         return xyz_list, feats_list
 
     def forward(self, xyz, rgb, up=True):
@@ -223,10 +223,10 @@ class PointCloudEncoder(nn.Module):
         _, feats = self.in_conv(xyz, rgb)
         xyz_list, feats_list = self._build_pyramid(xyz, feats)
         output_dict['xyz_list'] = xyz_list
+        output_dict['feats_list'] = feats_list
 
         xyz, feats = xyz_list[-1], feats_list[-1]
-        output_dict['feats'] = feats
-        if up:
+        if up:  # upsample deepest features to input resolution
             for i in range(len(xyz_list) - 2, -1, -1):
                 parent_xyz = xyz_list[i]
                 feats = self.up(xyz, parent_xyz, feats)
@@ -735,11 +735,7 @@ class Linear2DStylizer(nn.Module):
         vgg_layer = cfg['vgg_layer']
         self.vgg = NormalizedVGG(vgg_layer, pool=cfg.get('vgg_pool', 'max'))
 
-        in_dim = cfg['in_dim']
-        assert in_dim == vgg_dims[vgg_layer - 1], \
-            ('[ERROR] content feature dimension ({:d}) must match VGG '
-             'feature dimension ({:d})'.format(in_dim, vgg_dims[vgg_layer - 1])
-            )
+        in_dim = vgg_dims[vgg_layer - 1]
         n_layers = cfg.get('n_embed_layers', 0)
 
         hid_dims = []
@@ -816,12 +812,14 @@ class AdaIN3DStylizer(nn.Module):
         vgg_layer = cfg['vgg_layer']
         self.vgg = NormalizedVGG(vgg_layer, pool=cfg.get('vgg_pool', 'max'))
 
+        in_dim = vgg_dims[vgg_layer - 1]
+
         # content feature projection
         n_layers = cfg.get('n_zip_layers', 0)
         if n_layers > 0:
             out_dim = cfg.get('embed_dim', 32)
-            zipper = [nn.Conv1d(cfg['in_dim'], out_dim, 1)]
-            unzipper = [nn.Conv1d(out_dim, cfg['in_dim'], 1)]
+            zipper = [nn.Conv1d(in_dim, out_dim, 1)]
+            unzipper = [nn.Conv1d(out_dim, in_dim, 1)]
             for i in range(n_layers - 1):
                 zipper = zipper + [
                     nn.LeakyReLU(0.2, inplace=True),
@@ -834,7 +832,7 @@ class AdaIN3DStylizer(nn.Module):
             self.zipper = nn.Sequential(*zipper)
             self.unzipper = nn.Sequential(*unzipper)
         else:
-            out_dim = cfg['in_dim']
+            out_dim = in_dim
             self.zipper = self.unzipper = nn.Identity()
 
         # an MLP that takes style feature statistics (mean + stddev) as input 
@@ -848,12 +846,12 @@ class AdaIN3DStylizer(nn.Module):
             nn.Linear(hid_dim, out_dim * 2),
         )
 
-    def forward(self, style, xyz_list, feats):
+    def forward(self, style, xyz_list, feats_list):
         """
         Args:
             style (float tensor, (bs, 3, h, w)): style image.
             xyz_list (float tensor list): point NDC coordinates at all levels.
-            feats (float tensor, (bs, c, m)): content features.
+            feats_list (float tensor list): point features at all levels.
 
         Returns:
             feats (float tensor, (bs, c, n)): transformed content features.
@@ -867,6 +865,7 @@ class AdaIN3DStylizer(nn.Module):
         gain, bias = gain.unsqueeze(-1), bias.unsqueeze(-1)
         
         # AdaIN on projected content features
+        feats = feats_list[-1]
         feats = self.zipper(feats)
         feats = F.instance_norm(feats) * gain + bias
         feats = self.unzipper(feats)
@@ -887,11 +886,7 @@ class Linear3DStylizer(nn.Module):
         vgg_layer = cfg['vgg_layer']
         self.vgg = NormalizedVGG(vgg_layer, pool=cfg.get('vgg_pool', 'max'))
 
-        in_dim = cfg['in_dim']
-        assert in_dim == vgg_dims[vgg_layer - 1], \
-            ('[ERROR] content feature dimension ({:d}) must match VGG '
-             'feature dimension ({:d})'.format(in_dim, vgg_dims[vgg_layer - 1])
-            )
+        in_dim = vgg_dims[vgg_layer - 1]
         n_layers = cfg.get('n_embed_layers', 0)
 
         # compress content and style features
@@ -931,19 +926,21 @@ class Linear3DStylizer(nn.Module):
         cov = cov.reshape(cov.size(0), -1)
         return cov
 
-    def forward(self, style, xyz_list, feats):
+    def forward(self, style, xyz_list, feats_list):
         """
         Args:
             style (float tensor, (bs, 3, h, w)): style image.
             xyz_list (float tensor list): point NDC coordinates at all levels.
-            feats (float tensor, (bs, c, m)): content features.
+            feats_list (float tensor list): point features at all levels.
 
         Returns:
             feats (float tensor, (bs, c, n)): transformed content features.
         """
         style = self.vgg(style)
-
+        
+        feats = feats_list[-1]
         bs, _, h, w = feats.shape
+
         # subtract mean from input features
         c_mean = feats.mean(-1, keepdim=True)
         s_mean = style.mean((-2, -1), keepdim=True)
@@ -980,46 +977,77 @@ class AdaAttN3DStylizer(nn.Module):
 
         vgg_dims = [64, 128, 256, 512, 512]
         vgg_layer = cfg['vgg_layer']
-        self.vgg = NormalizedVGG(vgg_layer, pool=cfg.get('vgg_pool', 'max'))
+        pyramid = cfg.get('pyramid')
 
-        qkv_dim = vgg_dims[vgg_layer - 1]
-        self.adaattn = AdaAttN(qkv_dim, qkv_dim, project=True)
+        v_dim = vgg_dims[vgg_layer - 1]
+        if pyramid:
+            qk_dim = sum(vgg_dims[:vgg_layer])
+            self.vgg = NormalizedVGG(pool=cfg.get('vgg_pool', 'max'))
+        else:
+            qk_dim = v_dim
+            self.vgg = NormalizedVGG(vgg_layer, pool=cfg.get('vgg_pool', 'max'))
+        n_layers = cfg.get('n_zip_layers', 0)
+        
+        self.adaattn = AdaAttN(qk_dim, v_dim, project=True)
 
         # transform content features to match VGG feature space
-        n_layers = cfg.get('n_zip_layers', 0)
         if n_layers > 0:
-            zipper = [nn.Conv1d(cfg['in_dim'], qkv_dim, 1)]
-            unzipper = [nn.Conv1d(qkv_dim, cfg['in_dim'], 1)]
+            q_zipper = [nn.Conv1d(qk_dim, qk_dim, 1)]
+            v_zipper = [nn.Conv1d(v_dim, v_dim, 1)]
+            v_unzipper = [nn.Conv1d(v_dim, v_dim, 1)]
             for i in range(n_layers - 1):
-                zipper = zipper + [
+                q_zipper = q_zipper + [
                     nn.LeakyReLU(0.2, inplace=True),
-                    nn.Conv1d(qkv_dim, qkv_dim, 1),
+                    nn.Conv1d(qk_dim, qk_dim, 1),
                 ]
-                unzipper = [
-                    nn.Conv1d(qkv_dim, qkv_dim, 1),
+                v_zipper = v_zipper + [
                     nn.LeakyReLU(0.2, inplace=True),
-                ] + unzipper
-            self.zipper = nn.Sequential(*zipper)
-            self.unzipper = nn.Sequential(*unzipper)
+                    nn.Conv1d(v_dim, v_dim, 1),
+                ]
+                v_unzipper = [
+                    nn.Conv1d(v_dim, v_dim, 1),
+                    nn.LeakyReLU(0.2, inplace=True),
+                ] + v_unzipper
+            self.q_zipper = nn.Sequential(*q_zipper)
+            self.v_zipper = nn.Sequential(*v_zipper)
+            self.v_unzipper = nn.Sequential(*v_unzipper)
         else:
-            self.zipper = self.unzipper = nn.Identity()
+            self.q_zipper = self.v_zipper = self.v_unzipper = nn.Identity()
 
+        self.down = PointDownsample(cfg.get('down', 'linear'))
         self.up = PointUpsample(cfg.get('up', 'linear'))
 
-    def forward(self, style, xyz_list, feats):
+    def forward(self, style, xyz_list, feats_list):
         """
         Args:
             style (float tensor, (bs, 3, h, w)): style image.
             xyz_list (float tensor list): point NDC coordinates at all levels.
-            feats (float tensor, (bs, c, m)): content features.
+            feats_list (float tensor list): point features at all levels.
 
         Returns:
             feats (float tensor, (bs, c, n)): transformed content features.
         """
-        k = s = self.vgg(style)
-        q = c = self.zipper(feats)
+        # pyramidal query features
+        if self.pyramid:
+            style = self.vgg(style)
+            q, k = feats[0], style[0]
+            for i in range(len(feats_list) - 1):
+                q = self.down(xyz_list[i], q, xyz_list[i + 1])
+                k = F.interpolate(
+                    k, size=style[i + 1].shape[-2:], mode='bilinear',
+                    align_corners=False
+                )
+                q = torch.cat([q, feats[i + 1]], 1)
+                k = torch.cat([k, style[i + 1]], 1)
+            c = feats[-1]
+            s = style[len(feats_list) - 1]
+        else:
+            k = s = self.vgg(style)
+            q = c = feats[-1]
+
+        q, c = self.q_zipper(q), self.v_zipper(c)
         cs = self.adaattn(q, k, c, s)
-        feats = self.unzipper(cs)
+        feats = self.v_unzipper(cs)
 
         for i in range(len(xyz_list) - 2, -1, -1):
             feats = self.up(xyz_list[i + 1], xyz_list[i], feats)

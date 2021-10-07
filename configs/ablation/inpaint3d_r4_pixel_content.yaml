@@ -4,7 +4,7 @@ encoder:
   arch: pcd
 
   pcd:
-    n_levels: 2
+    n_levels: 3
 
     aggregate: max
     norm: batch
@@ -17,22 +17,22 @@ encoder:
     in_k: 16
 
     block: mr
-    scale_factor: !!python/list [4, 4]
-    dims: !!python/list [128, 256]
-    depth: !!python/list [1, 1]
-    radius: !!python/list [[[0.015, 0.025]], [[0.025, 0.05]]]
-    k: !!python/list [[[16, 16]], [[16, 16]]]
+    scale_factor: !!python/list [4, 4, 4]
+    dims: !!python/list [128, 256, 512]
+    depth: !!python/list [1, 2, 1]
+    radius: !!python/list [[[0.015, 0.025]], [[0.025, 0.05], [0.05, 0.05]], [[0.05, 0.1]]]
+    k: !!python/list [[[16, 16]], [[16, 16], [16, 16]], [[16, 16]]]
 
-    out_relu: true
+    out_relu: false
     up: linear
     
 decoder:
   arch: unet
 
   unet:
-    n_levels: 2
+    n_levels: 3
 
-    in_dim: 256
+    in_dim: 512
     down: conv
     down_actv: leaky_relu
     up: conv
@@ -44,20 +44,15 @@ discriminator:
 
 loss:
   render:
-    terms: [pixel, content, distill]
-    weights: [1, 1, 10]
+    terms: [pixel, content]
+    weights: [1, 1]
 
     pixel:
       loss_type: l1
 
     content:
       loss_type: l1
-      layers: !!python/list [3]
-      norm: null
-
-    distill:
-      loss_type: l1
-      layer: 3
+      layers: !!python/list [4]
       norm: null
 
   ganD: hinge
@@ -86,3 +81,4 @@ train:
   beta2: 0.999
   decay_itrs: !!python/list [-1]
   decay: 0.5
+

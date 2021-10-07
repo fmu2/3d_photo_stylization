@@ -129,13 +129,13 @@ class Model3D(nn.Module):
 
         # feature extraction
         enc_dict = self.encoder(xyz_ndc, rgb, up=(not self.stylization))
-        xyz_ndc_list = enc_dict['xyz_list']
-        feats, up_feats = enc_dict['feats'], enc_dict.get('up_feats')
+        xyz_ndc_list, feats_list = enc_dict['xyz_list'], enc_dict['feats_list']
+        feats, up_feats = feats_list[-1], enc_dict.get('up_feats')
 
         # stylization
         if self.stylization:
             assert style is not None, '[ERROR] style image is missing'
-            up_feats = self.stylizer(style, xyz_ndc_list, feats)
+            up_feats = self.stylizer(style, xyz_ndc_list, feats_list)
 
         pred_feats_list = [] 
         tgt_rgb_list, pred_rgb_list = [], []

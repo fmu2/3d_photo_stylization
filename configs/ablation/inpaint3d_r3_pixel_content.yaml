@@ -23,6 +23,7 @@ encoder:
     radius: !!python/list [[[0.015, 0.025]], [[0.025, 0.05]]]
     k: !!python/list [[[16, 16]], [[16, 16]]]
 
+    out_relu: false
     up: linear
     
 decoder:
