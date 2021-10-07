@@ -66,7 +66,7 @@ tar -xvzf val.tar.gz
 cd ..
 ```
 
-Images from the COCO2014 training split are resized to 448 x 448 and converted into LDIs following the aforementioned steps. Each LDI (or 3D point cloud) contains approximately 300K points. We use 80000 LDIs for training and the remaining for validation. The raw WikiArt images are extremely large. We down-sample them to 512 x 512 and keep the original training and validation splits.
+Images from the COCO2014 training split are resized to 448 x 448 and converted into LDIs following the aforementioned steps. Each LDI (equivalently 3D point cloud) contains approximately 300K points. We use 80K LDIs for training and the remaining for validation. The raw WikiArt images are extremely large. We down-sample them to 512 x 512 and keep the original training and validation splits.
 
 - Recommended folder structure
 ```
@@ -111,13 +111,13 @@ To train the encoder-decoder network for image reconstruction, run
 ```shell
 python train_inpaint.py -d {data_path} -c configs/{file_name}.yaml -n {job_name} -g {gpu_id}
 ```
-The latest model checkpoint `inpaint-last.pth` and the config file `inpaint-config.yaml` will be saved in `log/{job_name}`.
+The latest model checkpoint `inpaint-last.pth` and the config file `inpaint-config.yaml` will be saved at `log/{job_name}`.
 
 To train the stylization module for style transfer, run
 ```shell
 python train_stylize.py -d {data_path} -s {style_path} -c configs/{file_name}.yaml -n {job_name} -g {gpu_id}
 ```
-Note that the job name needs to exactly match that of a pre-trained image reconstruction model. The latest model checkpoint `stylize-last.pth` and the config file `stylize-config.yaml` will be saved in `log/{job_name}`.
+Note that the job name needs to exactly match that of a pre-trained image reconstruction model. The latest model checkpoint `stylize-last.pth` and the config file `stylize-config.yaml` will be saved at `log/{job_name}`.
 
 ### Evaluation
 
@@ -137,6 +137,8 @@ Our encoder-decoder backbone, when run without style input, is able to perform h
 python test_ldi_model.py -n {job_name} -g {gpu_id} -ldi {ldi_path} -cam {cam_motion} -x {x_bound} -y {y_bound} -z {z_bound} -f {num_frames}
 ```
 
+When input image size exceeds 448, use the `-pc` option to re-scale the point cloud. For example, if the input image is 1080 x 720, add `-pc 2` to the command above for better result.
+
 Note that this is an intermediate step of our style transfer pipeline and is not optimized for synthesis quality. Running this code will also generate the raw point cloud rendering (see above) for reference. The output videos may be found at `test/out/ldi_model/{job_name}_{cam_motion}`.
 
 - style transfer
@@ -145,6 +147,8 @@ This is our main objective. Given an inpainted 3D point cloud and a style image,
 ```shell
 python test_ldi_model.py -n {job_name} -g {gpu_id} -ldi {ldi_path} -s {style_path} -ss {style_size} -cam {cam_motion} -x {x_bound} -y {y_bound} -z {z_bound} -f {num_frames}
 ```
+
+See above for how to properly set the `-pc` option.
 
 Running this code will also generate the raw point cloud rendering (see above) for reference. The output videos may be found at `test/out/ldi_model/{job_name}_{style_name}_{cam_motion}`.
 
