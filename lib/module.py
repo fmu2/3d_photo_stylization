@@ -1030,7 +1030,7 @@ class AdaAttN3DStylizer(nn.Module):
         # pyramidal query features
         if self.pyramid:
             style = self.vgg(style)
-            q, k = feats[0], style[0]
+            q, k = feats_list[0], style[0]
             for i in range(len(feats_list) - 1):
                 q = self.down(xyz_list[i], q, xyz_list[i + 1])
                 k = F.interpolate(
@@ -1043,7 +1043,7 @@ class AdaAttN3DStylizer(nn.Module):
             s = style[len(feats_list) - 1]
         else:
             k = s = self.vgg(style)
-            q = c = feats[-1]
+            q = c = feats_list[-1]
 
         q, c = self.q_zipper(q), self.v_zipper(c)
         cs = self.adaattn(q, k, c, s)
