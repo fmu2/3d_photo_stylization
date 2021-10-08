@@ -977,10 +977,10 @@ class AdaAttN3DStylizer(nn.Module):
 
         vgg_dims = [64, 128, 256, 512, 512]
         vgg_layer = cfg['vgg_layer']
-        pyramid = cfg.get('pyramid')
+        self.pyramid = cfg.get('pyramid')
 
         v_dim = vgg_dims[vgg_layer - 1]
-        if pyramid:
+        if self.pyramid:
             qk_dim = sum(vgg_dims[:vgg_layer])
             self.vgg = NormalizedVGG(pool=cfg.get('vgg_pool', 'max'))
         else:
