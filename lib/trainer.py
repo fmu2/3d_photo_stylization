@@ -8,11 +8,10 @@ from .loss import InpaintingLoss, StylizationLoss, GANLoss
 from .metric import RMSE, PSNR, SSIM
 
 
-class InpaintingTrainer(nn.Module):
+class InpaintingTrainer():
     def __init__(self, netG, netD, 
                  optimG, optimD, schedG, schedD,
                  render_loss, G_GAN_loss, D_GAN_loss, weights):
-        super(InpaintingTrainer, self).__init__()
 
         self.parallel = False
 
@@ -68,14 +67,34 @@ class InpaintingTrainer(nn.Module):
         }
         return ckpt
 
-    def data_parallel(self):
-        self.netG = nn.DataParallel(self.netG)
-        self.netD = nn.DataParallel(self.netD)
-        self.render_loss.data_parallel()
-        self.parallel = True
+    def cuda(self, parallel=False):
+        self.netG.cuda()
+        self.netD.cuda()
+        self.render_loss.cuda()
+        self.G_GAN_loss.cuda()
+        self.D_GAN_loss.cuda()
+        self.rmse.cuda()
+        self.psnr.cuda()
+        self.ssim.cuda()
+        if parallel:
+            self.netG = nn.DataParallel(self.netG)
+            self.netD = nn.DataParallel(self.netD)
+            self.render_loss.data_parallel()
+            self.parallel = True
 
-    def forward(self, input_dict, h=None, w=None, mode='train', 
+    def train(self):
+        self.netG.train()
+        self.netD.train()
+
+    def eval(self):
+        self.netG.eval()
+        self.netD.eval()
+
+    def run(self, input_dict, h=None, w=None, mode='train', 
                 nvs=True, pcd_size=None):
+        for k in input_dict.keys():
+            input_dict[k] = input_dict[k].cuda(non_blocking=True)
+
         if nvs:
             output_dict = self.netG(input_dict, h, w, pcd_size)
             pred_rgb = output_dict['pred_rgb']                          # (bs, v, 3, h, w)
@@ -154,25 +173,26 @@ class InpaintingTrainer(nn.Module):
                 self.schedD.step()     
 
         loss_dict.pop('total')
-        pred_rgb = torch.clamp(pred_rgb.detach(), 0, 1)
+        for k in loss_dict.keys():
+            loss_dict[k] = loss_dict[k].cpu()
 
+        pred_rgb = torch.clamp(pred_rgb.detach(), 0, 1)
         output_dict = {
-            'pred': pred_rgb,
-            'target': tgt_rgb,
+            'pred': pred_rgb.cpu(),
+            'target': tgt_rgb.cpu(),
         }
         
         metric_dict = {
-            'rmse': self.rmse(pred_rgb, tgt_rgb),
-            'psnr': self.psnr(pred_rgb, tgt_rgb),
-            'ssim': self.ssim(pred_rgb, tgt_rgb),
+            'rmse': self.rmse(pred_rgb, tgt_rgb).cpu(),
+            'psnr': self.psnr(pred_rgb, tgt_rgb).cpu(),
+            'ssim': self.ssim(pred_rgb, tgt_rgb).cpu(),
         }
 
         return output_dict, loss_dict, metric_dict
 
 
-class StylizationTrainer(nn.Module):
+class StylizationTrainer():
     def __init__(self, net, optim, sched, loss):
-        super(StylizationTrainer, self).__init__()
 
         self.parallel = False
 
@@ -207,13 +227,25 @@ class StylizationTrainer(nn.Module):
         }
         return ckpt
 
-    def data_parallel(self):
-        self.net = nn.DataParallel(self.net)
-        self.loss.data_parallel()
-        self.parallel = True
+    def cuda(self, parallel=False):
+        self.net.cuda()
+        self.loss.cuda()
+        if parallel:
+            self.net = nn.DataParallel(self.net)
+            self.loss.data_parallel()
+            self.parallel = True
 
-    def forward(self, input_dict, h, w=None, mode='train', 
+    def train(self):
+        self.net.train()
+
+    def eval(self):
+        self.net.eval()
+
+    def run(self, input_dict, h, w=None, mode='train', 
                 nvs=True, pcd_size=None):
+        for k in input_dict.keys():
+            input_dict[k] = input_dict[k].cuda(non_blocking=True)
+
         if nvs:
             output_dict = self.net(input_dict, h, w, pcd_size)
             pred_rgb = output_dict['pred_rgb']                          # (bs, v, 3, h, w)
@@ -268,12 +300,14 @@ class StylizationTrainer(nn.Module):
             self.sched.step()
 
         loss_dict.pop('total')
-        pred_rgb = torch.clamp(pred_rgb.detach(), 0, 1)
+        for k in loss_dict.keys():
+            loss_dict[k] = loss_dict[k].cpu()
 
+        pred_rgb = torch.clamp(pred_rgb.detach(), 0, 1)
         output_dict = {
-            'pred': pred_rgb,
-            'target': tgt_rgb,
-            'style': style,
+            'pred': pred_rgb.cpu(),
+            'target': tgt_rgb.cpu(),
+            'style': style.cpu(),
         }
 
         return output_dict, loss_dict
@@ -321,10 +355,7 @@ def make_inpainting_trainer(config):
         netG, netD, optimG, optimD, schedG, schedD, 
         render_loss, D_GAN_loss, G_GAN_loss, config['loss']['weights']
     )
-    if torch.cuda.is_available():
-        trainer.cuda()
-        if config.get('_parallel'):
-            trainer.data_parallel()
+    trainer.cuda(parallel=config.get('_parallel'))
     return trainer
 
 
@@ -343,8 +374,5 @@ def make_stylization_trainer(config):
     loss = StylizationLoss(config['loss'])
 
     trainer = StylizationTrainer(net, optim, sched, loss)
-    if torch.cuda.is_available():
-        trainer.cuda()
-        if config.get('_parallel'):
-            trainer.data_parallel()
+    trainer.cuda(parallel=config.get('_parallel'))
     return trainer

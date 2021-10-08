@@ -5,6 +5,7 @@ import torch.nn.functional as F
 
 class RMSE(nn.Module):
     """ Root mean square error """
+
     def __init__(self):
         super(RMSE, self).__init__()
 
@@ -17,6 +18,7 @@ class RMSE(nn.Module):
 
 class PSNR(nn.Module):
     """ Peak signal-to-noise ratio """
+
     def __init__(self):
         super(PSNR, self).__init__()
 
@@ -31,6 +33,7 @@ class PSNR(nn.Module):
 
 class SSIM(nn.Module):
     """ Structural similarity index measure """
+    
     def __init__(self, n_channels=3, kernel_size=11, sigma=1.5):
         super(SSIM, self).__init__()
 

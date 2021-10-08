@@ -27,7 +27,7 @@ def main(args):
         net.cuda()
 
         net_state = ckpt['netG'] if 'netG' in ckpt.keys() else ckpt['net']
-        net.load_state_dict(net_state)
+        net.load_state_dict(net_state, strict=False)
         print('model loaded')
     except:
         raise ValueError(

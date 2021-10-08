@@ -147,10 +147,7 @@ def main(config):
 
         input_dict = next(train_iterator)
         input_dict['style'] = next(train_style_iterator)
-        for k in input_dict.keys():
-            input_dict[k] = input_dict[k].cuda(non_blocking=True)
-
-        out_dict, loss_dict = trainer(
+        out_dict, loss_dict = trainer.run(
             input_dict, 
             config['train'].get('h'), config['train'].get('w'),
             'train', config['3d'], config['train'].get('pcd_size')
@@ -177,7 +174,7 @@ def main(config):
                     tag='train/style/{:04d}/{:s}'.format(
                         itr // args.print_freq, k
                     ), 
-                    img_tensor=out_dict[k].cpu(), 
+                    img_tensor=out_dict[k], 
                     global_step=itr // args.print_freq
                 )
 
@@ -194,11 +191,8 @@ def main(config):
 
             for input_dict in val_loader:
                 input_dict['style'] = next(val_style_iterator)
-                for k in input_dict.keys():
-                    input_dict[k] = input_dict[k].cuda(non_blocking=True)
-                
                 with torch.no_grad():
-                    out_dict, loss_dict = trainer(
+                    out_dict, loss_dict = trainer.run(
                         input_dict, 
                         config['train'].get('h'), config['train'].get('w'),
                         'val', config['3d'], config['train'].get('pcd_size')
@@ -226,7 +220,7 @@ def main(config):
                     tag='val/style/{:04d}/{:s}'.format(
                         itr // args.print_freq, k
                     ), 
-                    img_tensor=out_dict[k].cpu(), 
+                    img_tensor=out_dict[k], 
                     global_step=itr // args.print_freq
                 )
 
