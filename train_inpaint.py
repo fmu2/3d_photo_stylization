@@ -4,7 +4,6 @@ import argparse
 
 import yaml
 import torch
-import torch.multiprocessing as mp
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
@@ -30,9 +29,6 @@ def main(config):
     yaml.dump(
         config, open(os.path.join(ckpt_path, 'inpaint-config.yaml'), 'w')
     )
-
-    if mp.get_start_method(allow_none=True) is None:
-        mp.set_start_method('spawn')
 
     ###########################################################################
     """ dataset """

@@ -11,7 +11,7 @@ stylizer:
 
 loss:
   terms: !!python/list [content, style, match]
-  weights: !!python/list [1, 0.3, 1]
+  weights: !!python/list [10, 3, 1]
 
   content:
     loss_type: l1

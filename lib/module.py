@@ -364,74 +364,56 @@ class VGGAttNDecoder(nn.Module):
         return rgb
 
 
-class UNetDownBlock(nn.Module):
+class DownBlock(nn.Module):
 
-    def __init__(self, in_dim, out_dim, down='conv',
+    def __init__(self, in_dim, out_dim, down='mean',
                  norm=None, actv='leaky_relu'):
-        super(UNetDownBlock, self).__init__()
+        super(DownBlock, self).__init__()
 
         if down == 'conv':
             self.down_conv = nn.Sequential(
                 nn.Conv2d(in_dim, out_dim, 3, 2, 1),
                 get_norm(out_dim, norm), get_actv(actv),
+                nn.Conv2d(out_dim, out_dim, 3, 1, 1),
+                get_norm(out_dim, norm), get_actv(actv),
             )
         elif down == 'mean':
-            self.down_conv = nn.Sequential(
-                nn.AvgPool2d(2, 2),
-                nn.Conv2d(in_dim, out_dim, 3, 1, 1),
-                get_norm(out_dim, norm), get_actv(actv),
-            )
-        elif down == 'max':
-            self.down_conv = nn.Sequential(
-                nn.MaxPool2d(2, 2),
-                nn.Conv2d(in_dim, out_dim, 3, 1, 1),
-                get_norm(out_dim, norm), get_actv(actv),
-            )
+            self.down_conv = nn.AvgPool2d(2)
         else:
             raise NotImplementedError(
                 '[ERROR] invalid downsampling operator: {:s}'.format(down)
             )
 
-        self.conv = nn.Sequential(
-            nn.Conv2d(out_dim, out_dim, 3, 1, 1),
-            get_norm(out_dim, norm), get_actv(actv),
-        )
-
     def forward(self, x):
-        x = self.conv(self.down_conv(x))
+        x = self.down_conv(x)
         return x
 
 
-class UNetUpBlock(nn.Module):
+class UpBlock(nn.Module):
 
-    def __init__(self, in_dim, skip_dim, out_dim, up='conv', 
+    def __init__(self, in_dim, out_dim, skip_dim=None, up='conv', 
                  norm=None, actv='relu'):
-        super(UNetUpBlock, self).__init__()
+        super(UpBlock, self).__init__()
 
         if up == 'conv':
             self.up_conv = nn.Sequential(
                 nn.ConvTranspose2d(in_dim, out_dim, 3, 2, 1, 1),
                 get_norm(out_dim, norm), get_actv(actv),
             )
-        elif up == 'bilinear':
-            self.up_conv = nn.Sequential(
-                nn.Upsample(scale_factor=2, mode='bilinear'),
-                nn.Conv2d(in_dim, out_dim, 3, 1, 1),
-                get_norm(out_dim, norm), get_actv(actv),
-            )
-        elif up == 'nearest':
-            self.up_conv = nn.Sequential(
-                nn.Upsample(scale_factor=2, mode='nearest'),
-                nn.Conv2d(in_dim, out_dim, 3, 1, 1),
-                get_norm(out_dim, norm), get_actv(actv),
-            )
         else:
-            raise NotImplementedError(
-                '[ERROR] invalid upsampling operator: {:s}'.format(up)
+            assert up in ('bilinear', 'nearest'), \
+                '[ERROR] invalid upsampling mode: {:s}'.format(up)
+            self.up_conv = nn.Sequential(
+                nn.Upsample(scale_factor=2, mode=up),
+                nn.Conv2d(in_dim, out_dim, 3, 1, 1),
+                get_norm(out_dim, norm), get_actv(actv),
             )
         
+        in_dim = out_dim
+        if skip_dim is not None:
+            in_dim += skip_dim
         self.conv = nn.Sequential(
-            nn.Conv2d(out_dim + skip_dim, out_dim, 3, 1, 1),
+            nn.Conv2d(in_dim, out_dim, 3, 1, 1),
             get_norm(out_dim, norm), get_actv(actv),
         )
 
@@ -452,61 +434,101 @@ class UNetUpBlock(nn.Module):
             )
         return x
 
-    def forward(self, x, skip):
+    def forward(self, x, skip=None):
         x = self.up_conv(x)
-        x = torch.cat([self._pad(x, skip), skip], 1)
+        if skip is not None:
+            x = torch.cat([self._pad(x, skip), skip], 1)
         x = self.conv(x)
         return x
 
 
+class UpDecoder(nn.Module):
+
+    def __init__(self, cfg):
+        super(UpDecoder, self).__init__()
+
+        in_dim = cfg['in_dim']
+        n_levels = cfg.get('n_levels', 2)
+
+        net = []
+        down_factor = 1
+        for i in range(n_levels):
+            out_dim = in_dim // 2
+            net.append(
+                nn.Sequential(
+                    UpBlock(
+                        in_dim, out_dim, None,
+                        up=cfg.get('up', 'conv'),
+                        norm=cfg.get('norm'),
+                        actv=cfg.get('up_actv', 'relu')
+                    )
+                )
+            )
+            in_dim = out_dim
+            down_factor *= 2
+        self.pool = nn.AvgPool2d(down_factor)
+        self.net = nn.Sequential(*net)
+
+        self.out_conv = nn.Sequential(
+            nn.Conv2d(out_dim, out_dim, 3, 1, 1),
+            get_norm(out_dim, None), get_actv(cfg.get('up_actv', 'relu')),
+            nn.Conv2d(out_dim, 3, 1, 1),
+        )
+
+    def forward(self, feats):
+        feats = self.pool(feats)
+        feats = self.net(feats)
+        rgb = self.out_conv(feats)
+
+
 class UNetDecoder(nn.Module):
 
-  def __init__(self, cfg):
-    super(UNetDecoder, self).__init__()
+    def __init__(self, cfg):
+        super(UNetDecoder, self).__init__()
 
-    self.down_layers = nn.ModuleList()
-    self.skip_convs = nn.ModuleList()
-    self.up_layers = nn.ModuleList()
+        self.down_layers = nn.ModuleList()
+        self.skip_convs = nn.ModuleList()
+        self.up_layers = nn.ModuleList()
 
-    in_dim = cfg['in_dim']
-    self.n_levels = cfg.get('n_levels', 2)
+        in_dim = cfg['in_dim']
+        self.n_levels = cfg.get('n_levels', 2)
 
-    for i in range(self.n_levels):
-        self.down_layers.append(
-            UNetDownBlock(
-                in_dim, in_dim, 
-                down=cfg.get('down', 'conv'),
-                norm=cfg.get('norm'),
-                actv=cfg.get('down_actv', 'leaky_relu')
+        for i in range(self.n_levels):
+            self.down_layers.append(
+                DownBlock(
+                    in_dim, in_dim, 
+                    down=cfg.get('down', 'mean'),
+                    norm=cfg.get('norm'),
+                    actv=cfg.get('down_actv', 'leaky_relu')
+                )
             )
-        )
-        out_dim = in_dim // 2 ** (self.n_levels - i)
-        self.skip_convs.append(nn.Conv2d(in_dim, out_dim, 1))
-        self.up_layers.append(
-            UNetUpBlock(
-                out_dim * 2, out_dim, out_dim,
-                up=cfg.get('up', 'conv'),
-                norm=cfg.get('norm'),
-                actv=cfg.get('up_actv', 'relu')
+            out_dim = in_dim // 2 ** (self.n_levels - i)
+            self.skip_convs.append(nn.Conv2d(in_dim, out_dim, 1))
+            self.up_layers.append(
+                UpBlock(
+                    out_dim * 2, out_dim, out_dim,
+                    up=cfg.get('up', 'conv'),
+                    norm=cfg.get('norm'),
+                    actv=cfg.get('up_actv', 'relu')
+                )
             )
+
+        out_dim = in_dim // 2 ** self.n_levels
+        self.out_conv = nn.Sequential(
+            nn.Conv2d(out_dim, out_dim, 3, 1, 1),
+            get_norm(out_dim, None), get_actv(cfg.get('up_actv', 'relu')),
+            nn.Conv2d(out_dim, 3, 1, 1),
         )
 
-    out_dim = in_dim // 2 ** self.n_levels
-    self.out_conv = nn.Sequential(
-        nn.Conv2d(out_dim, out_dim, 3, 1, 1),
-        get_norm(out_dim, None), get_actv(cfg.get('up_actv', 'relu')),
-        nn.Conv2d(out_dim, 3, 1, 1),
-    )
-
-  def forward(self, feats):
-    skips = []
-    for i in range(self.n_levels):
-        skips.append(self.skip_convs[i](feats))
-        feats = self.down_layers[i](feats)
-    for i in range(self.n_levels - 1, -1, -1):
-        feats = self.up_layers[i](feats, skips[i])
-    rgb = self.out_conv(feats)
-    return rgb
+    def forward(self, feats):
+        skips = []
+        for i in range(self.n_levels):
+            skips.append(self.skip_convs[i](feats))
+            feats = self.down_layers[i](feats)
+        for i in range(self.n_levels - 1, -1, -1):
+            feats = self.up_layers[i](feats, skips[i])
+        rgb = self.out_conv(feats)
+        return rgb
 
 
 class PointCloudDecoder(nn.Module):
@@ -846,17 +868,19 @@ class AdaIN3DStylizer(nn.Module):
             nn.Linear(hid_dim, out_dim * 2),
         )
 
-    def forward(self, style, xyz_list, feats_list):
+    def forward(self, style, xyz_list, feats_list, up=True):
         """
         Args:
             style (float tensor, (bs, 3, h, w)): style image.
             xyz_list (float tensor list): point NDC coordinates at all levels.
             feats_list (float tensor list): point features at all levels.
+            up (bool): if True, upsample output features to input resolution.
 
         Returns:
             feats (float tensor, (bs, c, n)): transformed content features.
         """
         style = self.vgg(style)
+        output_dict = dict()
         
         # predict per-style affine parameters
         mean, std = style.mean((-2, -1)), style.std((-2, -1))
@@ -869,11 +893,14 @@ class AdaIN3DStylizer(nn.Module):
         feats = self.zipper(feats)
         feats = F.instance_norm(feats) * gain + bias
         feats = self.unzipper(feats)
+        output_dict['feats'] = feats
         
         # upsample features to match the resolution of input point cloud
-        for i in range(len(xyz_list) - 2, -1, -1):
-            feats = self.up(xyz_list[i + 1], xyz_list[i], feats)
-        return feats
+        if up:
+            for i in range(len(xyz_list) - 2, -1, -1):
+                feats = self.up(xyz_list[i + 1], xyz_list[i], feats)
+            output_dict['up_feats'] = feats
+        return out_dict
 
 
 class Linear3DStylizer(nn.Module):
@@ -926,17 +953,19 @@ class Linear3DStylizer(nn.Module):
         cov = cov.reshape(cov.size(0), -1)
         return cov
 
-    def forward(self, style, xyz_list, feats_list):
+    def forward(self, style, xyz_list, feats_list, up=True):
         """
         Args:
             style (float tensor, (bs, 3, h, w)): style image.
             xyz_list (float tensor list): point NDC coordinates at all levels.
             feats_list (float tensor list): point features at all levels.
+            up (bool): if True, upsample output features to input resolution.
 
         Returns:
             feats (float tensor, (bs, c, n)): transformed content features.
         """
         style = self.vgg(style)
+        output_dict = dict()
         
         feats = feats_list[-1]
         bs, _, h, w = feats.shape
@@ -962,11 +991,14 @@ class Linear3DStylizer(nn.Module):
         c = torch.bmm(mat, c)
         c = self.unzipper(c)
         feats = c + s_mean.squeeze(-1)
+        output_dict['feats'] = feats
 
         # upsample features to match the resolution of input point cloud
-        for i in range(len(xyz_list) - 2, -1, -1):
-            feats = self.up(xyz_list[i + 1], xyz_list[i], feats)
-        return feats
+        if up:
+            for i in range(len(xyz_list) - 2, -1, -1):
+                feats = self.up(xyz_list[i + 1], xyz_list[i], feats)
+            output_dict['up_feats'] = feats
+        return output_dict
 
 
 class AdaAttN3DStylizer(nn.Module):
@@ -1017,16 +1049,19 @@ class AdaAttN3DStylizer(nn.Module):
         self.down = PointDownsample(cfg.get('down', 'linear'))
         self.up = PointUpsample(cfg.get('up', 'linear'))
 
-    def forward(self, style, xyz_list, feats_list):
+    def forward(self, style, xyz_list, feats_list, up=True):
         """
         Args:
             style (float tensor, (bs, 3, h, w)): style image.
             xyz_list (float tensor list): point NDC coordinates at all levels.
             feats_list (float tensor list): point features at all levels.
+            up (bool): if True, upsample output features to input resolution.
 
         Returns:
             feats (float tensor, (bs, c, n)): transformed content features.
         """
+        output_dict = dict()
+
         # pyramidal query features
         if self.pyramid:
             style = self.vgg(style)
@@ -1037,7 +1072,7 @@ class AdaAttN3DStylizer(nn.Module):
                     k, size=style[i + 1].shape[-2:], mode='bilinear',
                     align_corners=False
                 )
-                q = torch.cat([q, feats[i + 1]], 1)
+                q = torch.cat([q, feats_list[i + 1]], 1)
                 k = torch.cat([k, style[i + 1]], 1)
             c = feats[-1]
             s = style[len(feats_list) - 1]
@@ -1048,10 +1083,14 @@ class AdaAttN3DStylizer(nn.Module):
         q, c = self.q_zipper(q), self.v_zipper(c)
         cs = self.adaattn(q, k, c, s)
         feats = self.v_unzipper(cs)
+        output_dict['feats'] = feats
 
-        for i in range(len(xyz_list) - 2, -1, -1):
-            feats = self.up(xyz_list[i + 1], xyz_list[i], feats)
-        return feats
+        # upsample features to match the resolution of input point cloud
+        if up:
+            for i in range(len(xyz_list) - 2, -1, -1):
+                feats = self.up(xyz_list[i + 1], xyz_list[i], feats)
+            output_dict['up_feats'] = feats
+        return output_dict
 
 ###############################################################################
 """ Discriminator """

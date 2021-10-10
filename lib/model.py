@@ -10,8 +10,8 @@ class Model3D(nn.Module):
     def __init__(self, enc_cfg, dec_cfg):
         super(Model3D, self).__init__()
 
-        self.stylization = False           # whether in stylization mode
-        self.render_then_decode = True     # whether to render 2D feature maps before decoding
+        self.stylization = False            # whether in stylization mode
+        self.render_then_decode = True      # whether to render 2D feature maps before decoding
 
         # point cloud utilities
         ## NOTE: all geometry-based, no learnable parameters
@@ -23,7 +23,9 @@ class Model3D(nn.Module):
         self.encoder = PointCloudEncoder(enc_cfg['pcd'])
 
         # decoder
-        if dec_cfg['arch'] == 'unet':
+        if dec_cfg['arch'] == 'up':
+            self.decoder = UpDecoder(dec_cfg['up'])
+        elif dec_cfg['arch'] == 'unet':
             self.decoder = UNetDecoder(dec_cfg['unet'])
         elif dec_cfg['arch'] == 'pcd':
             self.decoder = PointCloudDecoder(dec_cfg['pcd'])
@@ -137,7 +139,10 @@ class Model3D(nn.Module):
         # stylization
         if self.stylization:
             assert style is not None, '[ERROR] style image is missing'
-            up_feats = self.stylizer(style, xyz_ndc_list, feats_list)
+            style_dict = self.stylizer(
+                style, xyz_ndc_list, feats_list, up=self.render_then_decode
+            )
+            feats, up_feats = style_dict['feats'], style_dict.get('up_feats')
 
         pred_feats_list = [] 
         tgt_rgb_list, pred_rgb_list = [], []

@@ -99,6 +99,7 @@ INPAINT3D_DEFAULTS = {
             'radius': [[[0.015, 0.025]], [[0.025, 0.05]]],
             'k': [[[16, 16]], [[16, 16]]],
 
+            'out_relu': False,
             'up': 'linear',
         },
     },
@@ -110,15 +111,11 @@ INPAINT3D_DEFAULTS = {
             'n_levels': 2,
 
             'in_dim': 256,
-            'dims': [128, 64],
-
             'down': 'conv',
             'down_actv': 'leaky_relu',
             'up': 'conv',
             'up_actv': 'conv',
             'norm': None,
-
-            'out_norm': False,
         },
     },
 
