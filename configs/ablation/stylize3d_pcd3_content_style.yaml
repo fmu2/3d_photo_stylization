@@ -4,10 +4,10 @@ stylizer:
   arch: adaattn
 
   adaattn:
-    vgg_layer: 4
+    vgg_layer: 3
     vgg_pool: max
-    n_zip_layers: 3
-    pyramid: true
+    n_zip_layers: 0
+    pyramid: false
 
 loss:
   terms: !!python/list [content, style]
@@ -15,13 +15,13 @@ loss:
 
   content:
     loss_type: l1
-    layers: !!python/list [3, 4]
+    layers: !!python/list [3]
     norm: adaattn
     reduction: mean
 
   style:
     loss_type: mse
-    layers: !!python/list [2, 3, 4]
+    layers: !!python/list [2, 3]
     stats: !!python/list [mean, std]
     reduction: mean
 

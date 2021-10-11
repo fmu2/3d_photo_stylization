@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .module import AdaAttN
+from .module import AdaIN, AdaAttN
 from .vgg import NormalizedVGG
 
 
@@ -111,19 +111,24 @@ class VGGContentLoss(nn.Module):
                 '[ERROR] invalid VGG layer: {:s}'.format(l)
         self.layers = layers
 
-        self.adaattn = None
+        self.adain = self.adaattn = None
         if norm is not None:
-            assert norm in ('instance', 'adaattn'), \
-                '[ERROR] invalid content normalization: {:s}'.format(norm)
-            if norm == 'adaattn':
+            if norm == 'adain':
+                self.adain = AdaIN()
+            elif norm == 'adaattn':
                 self.adaattn = AdaAttN()
+            else:
+                raise NotImplementedError(
+                    '[ERROR] invalid content normalization: {:s}'.format(norm)
+                )
         self.norm = norm
 
     def forward(self, pred_feats, content_feats, style_feats=None):
-        if self.norm == 'adaattn':
+        if self.norm is not None:
             assert style_feats is not None, \
                 '[ERROR] style features must be given for AdaAttN evaluation'
-            q, k = content_feats[0], style_feats[0]
+            if self.norm == 'adaattn':
+                q, k = content_feats[0], style_feats[0]
         
         loss = 0
         for i in range(len(pred_feats)):
@@ -142,12 +147,10 @@ class VGGContentLoss(nn.Module):
                 k = torch.cat([k, s], 1)
             
             if i + 1 in self.layers:
+                if self.norm == 'adain':
+                    c = self.adain(c, style_feats[i])
                 if self.norm == 'adaattn':
-                    s = style_feats[i]
-                    c = self.adaattn(q, k, c, s)
-                elif self.norm == 'instance':
-                    p = F.instance_norm(p)
-                    c = F.instance_norm(c)
+                    c = self.adaattn(q, k, c, style_feats[i])
                 loss += self.criterion(p, c)
         return loss
 

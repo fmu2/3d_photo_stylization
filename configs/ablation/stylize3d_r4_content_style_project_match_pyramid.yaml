@@ -10,8 +10,8 @@ stylizer:
     pyramid: true
 
 loss:
-  terms: !!python/list [content, style]
-  weights: !!python/list [1, 0.3]
+  terms: !!python/list [content, style, match]
+  weights: !!python/list [1, 0.3, 1]
 
   content:
     loss_type: l1
@@ -25,9 +25,12 @@ loss:
     stats: !!python/list [mean, std]
     reduction: mean
 
+  match:
+    loss_type: l1
+
 data:
   name: pcd
-  n_target_views: 1
+  n_target_views: 2
   x_lim: !!python/list [-0.05, 0.05]
   y_lim: !!python/list [-0.05, 0.05]
   z_lim: !!python/list [-0.05, 0.15]

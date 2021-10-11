@@ -187,7 +187,7 @@ class PointCloudEncoder(nn.Module):
         self.out_fc = nn.Conv1d(in_dim, in_dim, 1)
         self.out_relu = cfg.get('out_relu')
 
-        self.up = PointUpsample(cfg.get('up', 'linear'))
+        self.up = PointUpsample(mode=cfg.get('up', 'linear'))
 
     def _build_pyramid(self, xyz, feats):
         xyz_list, feats_list = [xyz], [feats]
@@ -613,31 +613,18 @@ class PointCloudDecoder(nn.Module):
 ###############################################################################
 """ Stylizer """
 
-class AdaIN2DStylizer(nn.Module):
-    """ Parameter-free AdaIN on image features (Huang et al., ICCV 17) """
+class AdaIN(nn.Module):
+    """ Adaptive instance normalization (Huang et al., ICCV 17) """
 
-    def __init__(self, cfg):
-        super(AdaIN2DStylizer, self).__init__()
+    def __init__(self):
+        super(AdaIN, self).__init__()
 
-        vgg_dims = [64, 128, 256, 512, 512]
-        vgg_layer = cfg['vgg_layer']
-        self.vgg = NormalizedVGG(vgg_layer, pool=cfg.get('vgg_pool', 'max'))
+    def forward(self, c, s):
+        mean = s.mean((-2, -1)).expand_as(c)
+        std = s.std((-2, -1)).expand_as(c)
+        cs = F.instance_norm(c) * std + mean
+        return cs
 
-    def forward(self, style, feats):
-        """
-        Args:
-            style (float tensor, (bs, 3, h, w)): style image.
-            feats (float tensor, (bs, c, h, w)): content features.
-
-        Returns:
-            feats (float tensor, (bs, c, h, w)): transformed content features.
-        """
-        style = self.vgg(style)
-        
-        mean = style.mean((-2, -1), keepdim=True)
-        std = style.std((-2, -1), keepdim=True)
-        feats = F.instance_norm(feats) * std + mean
-        return feats
 
 class AdaAttN(nn.Module):
     """ Attention-weighted AdaIN (Liu et al., ICCV 21) """
@@ -687,10 +674,103 @@ class AdaAttN(nn.Module):
         mean = mean.transpose(2, 1)                             # (bs, v, n)
         std = torch.sqrt(var).transpose(2, 1)                   # (bs, v, n)
         
-        # AdaIN
         cs = F.instance_norm(c) * std + mean                    # (bs, v, n)
         cs = cs.reshape(shape)
         return cs
+
+
+class LST(nn.Module):
+
+    def __init__(self, in_dim, embed_dim=32, n_layers=3):
+        super(LST, self).__init__()
+
+        self.embed_dim = embed_dim
+
+        c_net, s_net = [], []
+        for i in range(n_layers - 1):
+            out_dim = max(embed_dim, in_dim // 2)
+            c_net.append(
+                nn.Sequential(
+                    nn.Conv1d(in_dim, out_dim, 1),
+                    nn.ReLU(inplace=True),
+                )
+            )
+            s_net.append(
+                nn.Sequential(
+                    nn.Conv1d(in_dim, out_dim, 1),
+                    nn.ReLU(inplace=True),
+                )
+            )
+            in_dim = out_dim
+        c_net.append(nn.Conv1d(in_dim, embed_dim, 1))
+        s_net.append(nn.Conv1d(in_dim, embed_dim, 1))
+        self.c_net = nn.Sequential(*c_net)
+        self.s_net = nn.Sequential(*s_net)
+
+        self.c_fc = nn.Linear(embed_dim ** 2, embed_dim ** 2)
+        self.s_fc = nn.Linear(embed_dim ** 2, embed_dim ** 2)
+
+        self.c_zipper = nn.Conv1d(in_dim, embed_dim, 1)
+        self.c_unzipper = nn.Conv1d(embed_dim, in_dim, 1)
+
+    def _vectorized_covariance(self, x):
+        cov = torch.bmm(x, x.transpose(2, 1)) / x.size(-1)
+        cov = cov.flatten(1)
+        return cov
+
+    def forward(self, c, s):
+        c_shape = c.shape
+        c, s = c.flatten(1), s.flatten(1)
+        
+        c_mean = c.mean(-1, keepdim=True)
+        s_mean = s.mean(-1, keepdim=True)
+        c = c - c_mean
+        s = s - s_mean
+
+        c_embed = self.c_net(c)
+        c_cov = self._vectorized_covariance(c_embed)
+        c_mat = self.c_fc(c_cov)
+        c_mat = c_mat.reshape(-1, self.embed_dim, self.embed_dim)
+
+        s_embed = self.s_net(s)
+        s_cov = self._vectorized_covariance(s_embed)
+        s_mat = self.s_fc(s_cov)
+        s_mat = s_mat.reshape(-1, self.embed_dim, self.embed_dim)
+
+        mat = torch.bmm(s_mat, c_mat)
+        c = self.c_zipper(c)
+        c = torch.bmm(mat, c)
+        c = self.c_unzipper(c)
+        cs = c + s_mean
+
+        cs = cs.reshape(*c_shape)
+        return cs
+
+
+class AdaIN2DStylizer(nn.Module):
+    """ Parameter-free AdaIN on image features (Huang et al., ICCV 17) """
+
+    def __init__(self, cfg):
+        super(AdaIN2DStylizer, self).__init__()
+
+        vgg_dims = [64, 128, 256, 512, 512]
+        vgg_layer = cfg['vgg_layer']
+        self.vgg = NormalizedVGG(vgg_layer, pool=cfg.get('vgg_pool', 'max'))
+
+        self.adain = AdaIN()
+
+    def forward(self, style, feats):
+        """
+        Args:
+            style (float tensor, (bs, 3, h, w)): style image.
+            feats (float tensor, (bs, c, h, w)): content features.
+
+        Returns:
+            feats (float tensor, (bs, c, h, w)): transformed content features.
+        """
+        style = self.vgg(style)
+        feats = self.adain(feats, style)
+        return feats
 
 
 class AdaAttN2DStylizer(nn.Module):
@@ -757,39 +837,11 @@ class Linear2DStylizer(nn.Module):
         vgg_layer = cfg['vgg_layer']
         self.vgg = NormalizedVGG(vgg_layer, pool=cfg.get('vgg_pool', 'max'))
 
-        in_dim = vgg_dims[vgg_layer - 1]
-        n_layers = cfg.get('n_embed_layers', 0)
-
-        hid_dims = []
-        for i in range(n_layers):
-            hid_dims.append(max(32, in_dim // 2 ** (i + 1)))
-        self.embed_dim = hid_dims[-1] if n_layers > 0 else in_dim
-
-        c_net = [nn.ReflectionPad2d(1), nn.Conv2d(in_dim, hid_dims[0], 3)]
-        s_net = [nn.ReflectionPad2d(1), nn.Conv2d(in_dim, hid_dims[0], 3)]
-        for i in range(n_layers - 1):
-            c_net = c_net + [
-                nn.ReLU(inplace=True),
-                nn.ReflectionPad2d(1), nn.Conv2d(hid_dims[i], hid_dims[i + 1], 3)
-            ]
-            s_net = s_net + [
-                nn.ReLU(inplace=True),
-                nn.ReflectionPad2d(1), nn.Conv2d(hid_dims[i], hid_dims[i + 1], 3)
-            ]
-        self.c_net = nn.Sequential(*c_net)
-        self.s_net = nn.Sequential(*s_net)
-
-        self.c_fc = nn.Linear(self.embed_dim ** 2, self.embed_dim ** 2)
-        self.s_fc = nn.Linear(self.embed_dim ** 2, self.embed_dim ** 2)
-
-        self.zipper = nn.Conv2d(in_dim, self.embed_dim, 1)
-        self.unzipper = nn.Conv2d(self.embed_dim, in_dim, 1)
-
-    def _vectorized_covariance(self, x):
-        x = x.flatten(2)
-        cov = torch.bmm(x, x.transpose(1, 2)) / x.size(-1)
-        cov = cov.reshape(cov.size(0), -1)
-        return cov
+        self.lst = LST(
+            in_dim=vgg_dims[vgg_layer - 1], 
+            embed_dim=cfg.get('embed_dim', 32), 
+            n_layers=cfg.get('n_embed_layers', 3)
+        )
 
     def forward(self, style, feats):
         """
@@ -801,26 +853,7 @@ class Linear2DStylizer(nn.Module):
             feats (float tensor, (bs, c, h, w)): transformed content features.
         """
         style = self.vgg(style)
-
-        bs, _, h, w = feats.shape
-        c_mean = feats.mean((-2, -1), keepdim=True)
-        s_mean = style.mean((-2, -1), keepdim=True)
-        c = feats - c_mean
-        s = style - s_mean
-
-        c_embed = self.c_net(c)
-        c_cov = self._vectorized_covariance(c_embed)
-        c_mat = self.c_fc(c_cov).reshape(bs, self.embed_dim, self.embed_dim)
-
-        s_embed = self.s_net(s)
-        s_cov = self._vectorized_covariance(s_embed)
-        s_mat = self.s_fc(s_cov).reshape(bs, self.embed_dim, self.embed_dim)
-
-        mat = torch.bmm(s_mat, c_mat)
-        c = self.zipper(c)
-        c = torch.bmm(mat, c.flatten(2)).reshape(bs, -1, h, w)
-        c = self.unzipper(c)
-        feats = c + s_mean
+        feats = self.lst(feats, style)
         return feats
 
 
@@ -839,34 +872,25 @@ class AdaIN3DStylizer(nn.Module):
         # content feature projection
         n_layers = cfg.get('n_zip_layers', 0)
         if n_layers > 0:
-            out_dim = cfg.get('embed_dim', 32)
-            zipper = [nn.Conv1d(in_dim, out_dim, 1)]
-            unzipper = [nn.Conv1d(out_dim, in_dim, 1)]
+            zipper = [nn.Conv1d(in_dim, in_dim, 1)]
+            unzipper = [nn.Conv1d(in_dim, in_dim, 1)]
             for i in range(n_layers - 1):
                 zipper = zipper + [
                     nn.LeakyReLU(0.2, inplace=True),
-                    nn.Conv1d(out_dim, out_dim, 1),
+                    nn.Conv1d(in_dim, in_dim, 1),
                 ]
                 unzipper = [
-                    nn.Conv1d(out_dim, out_dim, 1),
+                    nn.Conv1d(in_dim, in_dim, 1),
                     nn.LeakyReLU(0.2, inplace=True),
                 ] + unzipper
             self.zipper = nn.Sequential(*zipper)
             self.unzipper = nn.Sequential(*unzipper)
         else:
-            out_dim = in_dim
             self.zipper = self.unzipper = nn.Identity()
 
-        # an MLP that takes style feature statistics (mean + stddev) as input 
-        # and predicts the affine parameters for content feature transformation
-        hid_dim = cfg.get('style_mlp_dim', 256)
-        self.style_mlp = nn.Sequential(
-            nn.Linear(vgg_dims[vgg_layer - 1] * 2, hid_dim), 
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(hid_dim, hid_dim),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(hid_dim, out_dim * 2),
-        )
+        self.adain = AdaIN()
+
+        self.up = PointUpsample(mode=cfg.get('up', 'linear'))
 
     def forward(self, style, xyz_list, feats_list, up=True):
         """
@@ -880,119 +904,11 @@ class AdaIN3DStylizer(nn.Module):
             feats (float tensor, (bs, c, n)): transformed content features.
         """
         style = self.vgg(style)
-        output_dict = dict()
-        
-        # predict per-style affine parameters
-        mean, std = style.mean((-2, -1)), style.std((-2, -1))
-        affine = self.style_mlp(torch.cat([mean, std], -1))
-        gain, bias = affine.split(affine.size(1) // 2, -1)
-        gain, bias = gain.unsqueeze(-1), bias.unsqueeze(-1)
-        
-        # AdaIN on projected content features
-        feats = feats_list[-1]
-        feats = self.zipper(feats)
-        feats = F.instance_norm(feats) * gain + bias
+        feats = self.zipper(feats_list[-1])
+        feats = self.adain(feats, style)
         feats = self.unzipper(feats)
-        output_dict['feats'] = feats
+        output_dict = {'feats': feats}
         
-        # upsample features to match the resolution of input point cloud
-        if up:
-            for i in range(len(xyz_list) - 2, -1, -1):
-                feats = self.up(xyz_list[i + 1], xyz_list[i], feats)
-            output_dict['up_feats'] = feats
-        return out_dict
-
-
-class Linear3DStylizer(nn.Module):
-    """ Learned affine transform on point features (Li et al., CVPR 19) """
-
-    def __init__(self, cfg):
-        super(Linear3DStylizer, self).__init__()
-
-        vgg_dims = [64, 128, 256, 512, 512]
-        vgg_layer = cfg['vgg_layer']
-        self.vgg = NormalizedVGG(vgg_layer, pool=cfg.get('vgg_pool', 'max'))
-
-        in_dim = vgg_dims[vgg_layer - 1]
-        n_layers = cfg.get('n_embed_layers', 0)
-
-        # compress content and style features
-        hid_dims = []
-        for i in range(n_layers):
-            hid_dims.append(max(32, in_dim // 2 ** (i + 1)))
-        self.embed_dim = hid_dims[-1] if n_layers > 0 else in_dim
-
-        c_net = [nn.Conv1d(in_dim, hid_dims[0], 1)]
-        s_net = [nn.ReflectionPad2d(1), nn.Conv2d(in_dim, hid_dims[0], 3)]
-        for i in range(n_layers - 1):
-            c_net = c_net + [
-                nn.ReLU(inplace=True),
-                nn.Conv1d(hid_dims[i], hid_dims[i + 1], 1)
-            ]
-            s_net = s_net + [
-                nn.ReLU(inplace=True),
-                nn.ReflectionPad2d(1), nn.Conv2d(hid_dims[i], hid_dims[i + 1], 3)
-            ]
-        self.c_net = nn.Sequential(*c_net)
-        self.s_net = nn.Sequential(*s_net)
-
-        # predict two square matrices from the covariance matrices of compressed 
-        # content and style features. The matrices will be multiplied together to 
-        # form the learned linear transformation (see Li et al., for detail)
-        self.c_fc = nn.Linear(self.embed_dim ** 2, self.embed_dim ** 2)
-        self.s_fc = nn.Linear(self.embed_dim ** 2, self.embed_dim ** 2)
-
-        self.zipper = nn.Conv1d(in_dim, self.embed_dim, 1)
-        self.unzipper = nn.Conv1d(self.embed_dim, in_dim, 1)
-
-        self.up = PointUpsample(cfg.get('up', 'linear'))
-
-    def _vectorized_covariance(self, x):
-        x = x.flatten(2)
-        cov = torch.bmm(x, x.transpose(1, 2)) / x.size(-1)
-        cov = cov.reshape(cov.size(0), -1)
-        return cov
-
-    def forward(self, style, xyz_list, feats_list, up=True):
-        """
-        Args:
-            style (float tensor, (bs, 3, h, w)): style image.
-            xyz_list (float tensor list): point NDC coordinates at all levels.
-            feats_list (float tensor list): point features at all levels.
-            up (bool): if True, upsample output features to input resolution.
-
-        Returns:
-            feats (float tensor, (bs, c, n)): transformed content features.
-        """
-        style = self.vgg(style)
-        output_dict = dict()
-        
-        feats = feats_list[-1]
-        bs, _, h, w = feats.shape
-
-        # subtract mean from input features
-        c_mean = feats.mean(-1, keepdim=True)
-        s_mean = style.mean((-2, -1), keepdim=True)
-        c = feats - c_mean
-        s = style - s_mean
-
-        # feature compression and matrix prediction
-        c_embed = self.c_net(c)
-        c_cov = self._vectorized_covariance(c_embed)
-        c_mat = self.c_fc(c_cov).reshape(bs, self.embed_dim, self.embed_dim)
-
-        s_embed = self.s_net(s)
-        s_cov = self._vectorized_covariance(s_embed)
-        s_mat = self.s_fc(s_cov).reshape(bs, self.embed_dim, self.embed_dim)
-
-        # form linear transform matrix and apply it on content features
-        mat = torch.bmm(s_mat, c_mat)
-        c = self.zipper(c)
-        c = torch.bmm(mat, c)
-        c = self.unzipper(c)
-        feats = c + s_mean.squeeze(-1)
-        output_dict['feats'] = feats
-
         # upsample features to match the resolution of input point cloud
         if up:
             for i in range(len(xyz_list) - 2, -1, -1):
@@ -1046,8 +962,8 @@ class AdaAttN3DStylizer(nn.Module):
         else:
             self.q_zipper = self.v_zipper = self.v_unzipper = nn.Identity()
 
-        self.down = PointDownsample(cfg.get('down', 'linear'))
-        self.up = PointUpsample(cfg.get('up', 'linear'))
+        self.down = PointDownsample(mode=cfg.get('down', 'linear'))
+        self.up = PointUpsample(mode=cfg.get('up', 'linear'))
 
     def forward(self, style, xyz_list, feats_list, up=True):
         """
@@ -1060,21 +976,19 @@ class AdaAttN3DStylizer(nn.Module):
         Returns:
             feats (float tensor, (bs, c, n)): transformed content features.
         """
-        output_dict = dict()
-
         # pyramidal query features
         if self.pyramid:
             style = self.vgg(style)
             q, k = feats_list[0], style[0]
             for i in range(len(feats_list) - 1):
-                q = self.down(xyz_list[i], q, xyz_list[i + 1])
+                _, q = self.down(xyz_list[i], q, xyz_list[i + 1])
                 k = F.interpolate(
                     k, size=style[i + 1].shape[-2:], mode='bilinear',
                     align_corners=False
                 )
                 q = torch.cat([q, feats_list[i + 1]], 1)
                 k = torch.cat([k, style[i + 1]], 1)
-            c = feats[-1]
+            c = feats_list[-1]
             s = style[len(feats_list) - 1]
         else:
             k = s = self.vgg(style)
@@ -1083,7 +997,48 @@ class AdaAttN3DStylizer(nn.Module):
         q, c = self.q_zipper(q), self.v_zipper(c)
         cs = self.adaattn(q, k, c, s)
         feats = self.v_unzipper(cs)
-        output_dict['feats'] = feats
+        output_dict = {'feats': feats}
+
+        # upsample features to match the resolution of input point cloud
+        if up:
+            for i in range(len(xyz_list) - 2, -1, -1):
+                feats = self.up(xyz_list[i + 1], xyz_list[i], feats)
+            output_dict['up_feats'] = feats
+        return output_dict
+
+
+class Linear3DStylizer(nn.Module):
+    """ Learned affine transform on point features (Li et al., CVPR 19) """
+
+    def __init__(self, cfg):
+        super(Linear3DStylizer, self).__init__()
+
+        vgg_dims = [64, 128, 256, 512, 512]
+        vgg_layer = cfg['vgg_layer']
+        self.vgg = NormalizedVGG(vgg_layer, pool=cfg.get('vgg_pool', 'max'))
+
+        self.lst = nn.LST(
+            in_dim=vgg_dims[vgg_layer - 1], 
+            embed_dim=cfg.get('embed_dim', 32), 
+            n_layers=cfg.get('n_embed_layers', 3)
+        )
+
+        self.up = PointUpsample(mode=cfg.get('up', 'linear'))
+
+    def forward(self, style, xyz_list, feats_list, up=True):
+        """
+        Args:
+            style (float tensor, (bs, 3, h, w)): style image.
+            xyz_list (float tensor list): point NDC coordinates at all levels.
+            feats_list (float tensor list): point features at all levels.
+            up (bool): if True, upsample output features to input resolution.
+
+        Returns:
+            feats (float tensor, (bs, c, n)): transformed content features.
+        """
+        style = self.vgg(style)
+        feats = self.lst(feats_list[-1], style)
+        output_dict = {'feats': feats}
 
         # upsample features to match the resolution of input point cloud
         if up:

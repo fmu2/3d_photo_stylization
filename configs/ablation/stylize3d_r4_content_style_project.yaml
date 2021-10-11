@@ -6,12 +6,12 @@ stylizer:
   adaattn:
     vgg_layer: 4
     vgg_pool: max
-    n_zip_layers: 2
+    n_zip_layers: 3
     pyramid: false
 
 loss:
   terms: !!python/list [content, style]
-  weights: !!python/list [10, 3]
+  weights: !!python/list [1, 0.3]
 
   content:
     loss_type: l1

@@ -6,8 +6,8 @@ stylizer:
   adaattn:
     vgg_layer: 4
     vgg_pool: max
-    n_zip_layers: 3
-    pyramid: true
+    n_zip_layers: 0
+    pyramid: false
 
 loss:
   terms: !!python/list [content, style]
