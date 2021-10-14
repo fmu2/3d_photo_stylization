@@ -686,6 +686,9 @@ class LST(nn.Module):
 
         self.embed_dim = embed_dim
 
+        self.c_zipper = nn.Conv1d(in_dim, embed_dim, 1)
+        self.c_unzipper = nn.Conv1d(embed_dim, in_dim, 1)
+
         c_net, s_net = [], []
         for i in range(n_layers - 1):
             out_dim = max(embed_dim, in_dim // 2)
@@ -710,9 +713,6 @@ class LST(nn.Module):
         self.c_fc = nn.Linear(embed_dim ** 2, embed_dim ** 2)
         self.s_fc = nn.Linear(embed_dim ** 2, embed_dim ** 2)
 
-        self.c_zipper = nn.Conv1d(in_dim, embed_dim, 1)
-        self.c_unzipper = nn.Conv1d(embed_dim, in_dim, 1)
-
     def _vectorized_covariance(self, x):
         cov = torch.bmm(x, x.transpose(2, 1)) / x.size(-1)
         cov = cov.flatten(1)
@@ -720,7 +720,7 @@ class LST(nn.Module):
 
     def forward(self, c, s):
         c_shape = c.shape
-        c, s = c.flatten(1), s.flatten(1)
+        c, s = c.flatten(2), s.flatten(2)
         
         c_mean = c.mean(-1, keepdim=True)
         s_mean = s.mean(-1, keepdim=True)
@@ -1017,7 +1017,7 @@ class Linear3DStylizer(nn.Module):
         vgg_layer = cfg['vgg_layer']
         self.vgg = NormalizedVGG(vgg_layer, pool=cfg.get('vgg_pool', 'max'))
 
-        self.lst = nn.LST(
+        self.lst = LST(
             in_dim=vgg_dims[vgg_layer - 1], 
             embed_dim=cfg.get('embed_dim', 32), 
             n_layers=cfg.get('n_embed_layers', 3)
