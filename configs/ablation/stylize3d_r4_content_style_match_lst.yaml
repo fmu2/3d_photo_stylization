@@ -3,7 +3,7 @@
 stylizer:
   arch: linear
 
-  lst:
+  linear:
     vgg_layer: 4
     vgg_pool: max
     n_embed_layers: 3
