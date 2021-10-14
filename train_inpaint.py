@@ -100,9 +100,13 @@ def main(config):
 
         input_dict = next(train_iterator)
         out_dict, loss_dict, metric_dict = trainer.run(
-            input_dict, 
-            config['train'].get('h'), config['train'].get('w'),
-            'train', config['3d'], config['train'].get('pcd_size')
+            input_dict=input_dict, 
+            h=config['train']['h'], 
+            w=config['train'].get('w'),
+            mode='train', 
+            nvs=config['3d'], 
+            ndc=config.get('ndc', True),
+            pcd_size=config['train'].get('pcd_size')
         )
         
         for k in loss_dict.keys():
@@ -154,9 +158,13 @@ def main(config):
             for input_dict in val_loader:
                 with torch.no_grad():
                     out_dict, loss_dict, metric_dict = trainer.run(
-                        input_dict, 
-                        config['train'].get('h'), config['train'].get('w'),
-                        'val', config['3d'], config['train'].get('pcd_size')
+                        input_dict=input_dict, 
+                        h=config['train']['h'], 
+                        w=config['train'].get('w'),
+                        mode='val', 
+                        nvs=config['3d'],
+                        ndc=config.get('ndc', True), 
+                        pcd_size=config['train'].get('pcd_size')
                     )
 
                 for k in loss_dict.keys():

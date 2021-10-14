@@ -75,6 +75,7 @@ INPAINT2D_DEFAULTS = {
 
 INPAINT3D_DEFAULTS = {
     '3d': True,
+    'ndc': True,
     
     'encoder': {
         'arch': 'pcd',
@@ -125,8 +126,8 @@ INPAINT3D_DEFAULTS = {
 
     'loss': {
         'render': {
-            'terms': ['pixel', 'content'],
-            'weights': [1, 1],
+            'terms': ['pixel', 'content', 'match'],
+            'weights': [1, 1, 1],
 
             'pixel': {
                 'loss_type': 'l1',
@@ -138,6 +139,10 @@ INPAINT3D_DEFAULTS = {
                 'layers': [3],
                 'norm': None,
                 'reduction': 'mean',
+            },
+
+            'match': {
+                'loss_type': 'l1',
             },
         },
 
@@ -253,6 +258,9 @@ STYLIZE2D_DEFAULTS = {
 
 
 STYLIZE3D_DEFAULTS = {
+    '3d': True,
+    'ndc': True,
+
     'stylizer': {
         'arch': 'adain',
 
@@ -264,8 +272,8 @@ STYLIZE3D_DEFAULTS = {
     },
 
     'loss': {
-        'terms': ['content', 'style'],
-        'weights': [1, 0.02],
+        'terms': ['content', 'style', 'match'],
+        'weights': [1, 0.02, 1],
 
         'content': {
             'loss_type': 'mse',
@@ -279,6 +287,10 @@ STYLIZE3D_DEFAULTS = {
             'layers': [1, 2, 3],
             'stats': ['mean', 'gram'],
             'reduction': 'sum',
+        },
+
+        'match': {
+            'loss_type': 'l1',
         },
     },
 

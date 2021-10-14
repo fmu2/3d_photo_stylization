@@ -16,6 +16,15 @@ from lib.util import *
 
 
 def main(args):
+    random.seed(0)
+    np.random.seed(0)
+    torch.manual_seed(0)
+    torch.cuda.manual_seed(0)
+
+    torch.backends.cudnn.enabled = True
+    torch.backends.cudnn.benchmark = True
+    # torch.backends.cudnn.deterministic = True
+    
     # load LDI
     try:
         ldi = sio.loadmat(args.ldi_path)

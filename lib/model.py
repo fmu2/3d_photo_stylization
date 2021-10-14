@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from .module import *
-from .render import view2ndc
+from .render import view2ndc, ndc2view
 
 
 class Model3D(nn.Module):
@@ -23,8 +23,8 @@ class Model3D(nn.Module):
         self.encoder = PointCloudEncoder(enc_cfg['pcd'])
 
         # decoder
-        if dec_cfg['arch'] == 'up':
-            self.decoder = UpDecoder(dec_cfg['up'])
+        if dec_cfg['arch'] == 'upnet':
+            self.decoder = UpDecoder(dec_cfg['upnet'])
         elif dec_cfg['arch'] == 'unet':
             self.decoder = UNetDecoder(dec_cfg['unet'])
         elif dec_cfg['arch'] == 'pcd':
@@ -34,6 +34,7 @@ class Model3D(nn.Module):
             raise NotImplementedError(
                 '[ERROR] invalid decoder: {:s}'.format(dec_cfg['arch'])
             )
+        self.decoder_up = self.decoder.up   # whether to upsample features before rendering
 
     def convert_for_stylization(self, cfg, freeze_enc=True, freeze_dec=True):
         if freeze_enc:
@@ -59,18 +60,8 @@ class Model3D(nn.Module):
         params = [p for p in self.parameters() if p.requires_grad]
         return params
 
-    def _view2ndc(self, xyz, fov, ar=1, scale=1):
-        # view space -> NDC space
-        ## NOTE: assume that valid points have depth < 1e5.
-        z = xyz[..., 2]
-        near = 0.99 * z.amin(1)
-        far = (z * (z < 1e5)).quantile(0.95, 1)
-        far = torch.maximum(far, near * 2)
-        xyz_ndc = view2ndc(xyz, near, far, fov, ar) * scale
-        return xyz_ndc
-
-
-    def forward(self, input_dict, h=224, w=None, pcd_size=None, pcd_scale=None,
+    def forward(self, input_dict, h=224, w=None, 
+                ndc=True, pcd_size=None, pcd_scale=None,
                 rgb_only=False):
         """
         Args:
@@ -85,6 +76,7 @@ class Model3D(nn.Module):
                 style ((optional) float tensor, (bs, 3, h, w)): style images.
             h (int): height of rendered images.
             w (int): width of rendered images.
+            ndc (bool): if True, construct point cloud in NDC space.
             pcd_size (int): number of points to draw for point cloud processing.
             pcd_scale (float): point cloud scale.
             rgb_only (bool): if True, only return RGB images.
@@ -128,11 +120,24 @@ class Model3D(nn.Module):
         ## NOTE: assume that the ordering of points has been randomized
         ## (e.g., by random shuffling).
         xyz, rgb = xyz[:, :pcd_size], rgb[..., :pcd_size]
-        ## NOTE: preserve aspect ratio by setting ar=1
-        xyz_ndc = self._view2ndc(xyz, fov, ar=1, scale=pcd_scale)
 
+        # view space -> NDC space
+        ## NOTE: assume that valid points have depth < 1e5.
+        if ndc:
+            z = xyz[..., 2]
+            near = 0.99 * z.amin(1)
+            far = (z * (z < 1e5)).quantile(0.95, 1)
+            far = torch.maximum(far, near * 2)
+            ## NOTE: preserve aspect ratio by setting ar=1
+            xyz_ndc = view2ndc(xyz, near, far, fov, ar=1) * pcd_scale
+        else:
+            xyz_ndc = xyz
+        
         # feature extraction
-        enc_dict = self.encoder(xyz_ndc, rgb, up=(not self.stylization))
+        enc_dict = self.encoder(
+            xyz_ndc, rgb, 
+            up=(self.decoder_up == 1 and not self.stylization)
+        )
         xyz_ndc_list, feats_list = enc_dict['xyz_list'], enc_dict['feats_list']
         feats, up_feats = feats_list[-1], enc_dict.get('up_feats')
 
@@ -140,7 +145,8 @@ class Model3D(nn.Module):
         if self.stylization:
             assert style is not None, '[ERROR] style image is missing'
             style_dict = self.stylizer(
-                style, xyz_ndc_list, feats_list, up=self.render_then_decode
+                style, xyz_ndc_list, feats_list, 
+                up=(self.decoder_up == 1 and self.render_then_decode)
             )
             feats, up_feats = style_dict['feats'], style_dict.get('up_feats')
 
@@ -151,6 +157,12 @@ class Model3D(nn.Module):
         # rasterization / reconstruction
         for k in range(n_views):
             fov = tgt_fovs[:, k]
+            if self.decoder_up > 1:
+                xyz_ndc = xyz_ndc_list[-1] / pcd_scale
+                if ndc:
+                    xyz = ndc2view(xyz_ndc, near, far, fov, ar=1)
+                else:
+                    xyz = xyz_ndc
             new_xyz = self.view_transformer(xyz, Ms[:, k])
             new_raw_xyz = self.view_transformer(raw_xyz, Ms[:, k])
 
@@ -158,7 +170,9 @@ class Model3D(nn.Module):
                 # 1) rasterize featurized point cloud to novel view
                 # 2) decode 2D feature maps into RGB image
                 pred_dict = self.renderer(
-                    new_xyz, up_feats, fov, h, w, return_uv=(not rgb_only)
+                    new_xyz, up_feats if up_feats is not None else feats, 
+                    fov, h // self.decoder_up, w // self.decoder_up, 
+                    return_uv=(not rgb_only)
                 )
                 pred_feats = pred_dict['data']
                 pred_rgb = self.decoder(pred_feats)

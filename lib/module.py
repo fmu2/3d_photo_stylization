@@ -451,7 +451,6 @@ class UpDecoder(nn.Module):
         n_levels = cfg.get('n_levels', 2)
 
         net = []
-        down_factor = 1
         for i in range(n_levels):
             out_dim = in_dim // 2
             net.append(
@@ -465,8 +464,12 @@ class UpDecoder(nn.Module):
                 )
             )
             in_dim = out_dim
-            down_factor *= 2
-        self.pool = nn.AvgPool2d(down_factor)
+        if cfg.get('pool'):
+            self.up = 1
+            self.pool = nn.AvgPool2d(2 ** n_levels)
+        else:
+            self.up = 2 ** n_levels
+            self.pool = nn.Identity()
         self.net = nn.Sequential(*net)
 
         self.out_conv = nn.Sequential(
@@ -479,7 +482,8 @@ class UpDecoder(nn.Module):
         feats = self.pool(feats)
         feats = self.net(feats)
         rgb = self.out_conv(feats)
-
+        return rgb
+        
 
 class UNetDecoder(nn.Module):
 
@@ -492,6 +496,7 @@ class UNetDecoder(nn.Module):
 
         in_dim = cfg['in_dim']
         self.n_levels = cfg.get('n_levels', 2)
+        self.up = 1
 
         for i in range(self.n_levels):
             self.down_layers.append(
@@ -541,6 +546,7 @@ class PointCloudDecoder(nn.Module):
         assert len(cfg['dims']) == self.n_levels
         assert len(cfg['k']) == self.n_levels
         assert len(cfg['radius']) == self.n_levels
+        self.up = 1
 
         self.blocks = nn.ModuleList()
         in_dim = cfg['in_dim']

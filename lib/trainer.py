@@ -91,12 +91,12 @@ class InpaintingTrainer():
         self.netD.eval()
 
     def run(self, input_dict, h=None, w=None, mode='train', 
-                nvs=True, pcd_size=None):
+                nvs=True, ndc=True, pcd_size=None):
         for k in input_dict.keys():
             input_dict[k] = input_dict[k].cuda(non_blocking=True)
 
         if nvs:
-            output_dict = self.netG(input_dict, h, w, pcd_size)
+            output_dict = self.netG(input_dict, h, w, ndc, pcd_size)
             pred_rgb = output_dict['pred_rgb']                          # (bs, v, 3, h, w)
             bs, n_views = pred_rgb.shape[:2]
             pred_rgb = pred_rgb.flatten(0, 1)                           # (bs * v, 3, h, w)
@@ -242,12 +242,12 @@ class StylizationTrainer():
         self.net.eval()
 
     def run(self, input_dict, h, w=None, mode='train', 
-                nvs=True, pcd_size=None):
+                nvs=True, ndc=True, pcd_size=None):
         for k in input_dict.keys():
             input_dict[k] = input_dict[k].cuda(non_blocking=True)
 
         if nvs:
-            output_dict = self.net(input_dict, h, w, pcd_size)
+            output_dict = self.net(input_dict, h, w, ndc, pcd_size)
             pred_rgb = output_dict['pred_rgb']                          # (bs, v, 3, h, w)
             bs, n_views = pred_rgb.shape[:2]
             pred_rgb = pred_rgb.flatten(0, 1)                           # (bs * v, 3, h, w)
