@@ -95,6 +95,9 @@ def main(args):
         Ms = make_swing(args.n_frames, args.x_lim, args.z_lim)
     elif args.motion == 'circle':
         Ms = make_circle(args.n_frames, args.x_lim, args.y_lim, args.z_lim)
+    elif args.motion == 'static':
+        Ms = torch.zeros(1, 3, 4)
+        Ms[..., :3] += torch.eye(3)
 
     input_dict = {
         'src_rgb': rgb[None].cuda(),        # (1, 3, p)
@@ -128,6 +131,7 @@ def main(args):
             input_dict=input_dict, 
             h=h // 2,
             w=w // 2,
+            ndc=args.ndc,
             pcd_size=args.pcd_size,
             pcd_scale=args.pcd_scale,
             rgb_only=True
@@ -145,21 +149,11 @@ def main(args):
     tgt_rgbs = (tgt_rgbs * 255).astype(np.uint8)
 
     # save
-    if args.save_frames:
-        for i in range(len(pred_rgbs)):
-            pred_rgb = Image.fromarray(pred_rgbs[i])
-            tgt_rgb = Image.fromarray(tgt_rgbs[i])
-            pred_rgb.save(
-                os.path.join(save_path, '{:03d}_pred.png'.format(i + 1))
-            )
-            tgt_rgb.save(
-                os.path.join(save_path, '{:03d}_tgt.png'.format(i + 1))
-            )
     imageio.mimwrite(
         os.path.join(save_path, 'video_pred.mp4'), pred_rgbs, fps=30, quality=8
     )
     imageio.mimwrite(
-        os.path.join(save_path, 'video_tgt.mp4'), tgt_rgbs, fps=30, quality=8
+        os.path.join(save_path, 'video.mp4'), tgt_rgbs, fps=30, quality=8
     )
 
 ###############################################################################
@@ -181,6 +175,8 @@ if __name__ == '__main__':
     parser.add_argument('-fov', '--fov', type=float, default=None,
                         help='output (vertical) field of view')
 
+    parser.add_argument('-ndc', '--ndc', action='store_true',
+                        default=True, help='if True, convert to NDC space')
     parser.add_argument('-ps', '--pcd_size', type=int, default=None,
                         help='point cloud size')
     parser.add_argument('-pc', '--pcd_scale', type=float, default=1,
@@ -190,7 +186,7 @@ if __name__ == '__main__':
     
     parser.add_argument('-cam', '--motion', type=str, default='zoom', 
                         choices=('zoom', 'dolly_zoom', 'ken_burns', 
-                                 'swing', 'circle',
+                                 'swing', 'circle', 'static'
                                 ),
                         help='camera motion')
 
@@ -203,8 +199,6 @@ if __name__ == '__main__':
 
     parser.add_argument('-f', '--n_frames', type=int, 
                         default=90, help='number of frames')
-    parser.add_argument('-sf', '--save_frames', action='store_true', 
-                        default=False, help='if True, save all frames')
     
     args = parser.parse_args()
 

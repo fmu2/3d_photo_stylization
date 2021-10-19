@@ -8,7 +8,7 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
-#define TOTAL_THREADS 512
+#define TOTAL_THREADS 1024
 #define DIVUP(m, n) ((m) / (n) + ((m) % (n) > 0))
 
 inline int opt_n_threads(int work_size) {

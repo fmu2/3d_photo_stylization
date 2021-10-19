@@ -104,10 +104,6 @@ def main(args):
     rgbs = (rgbs * 255).astype(np.uint8)
 
     # save
-    if args.save_frames:
-        for i in range(len(rgbs)):
-            rgb = Image.fromarray(rgbs[i])
-            rgb.save(os.path.join(save_path, '{:03d}.png'.format(i + 1)))
     imageio.mimwrite(
         os.path.join(save_path, 'video.mp4'), rgbs, fps=30, quality=8
     ) 
@@ -144,8 +140,6 @@ if __name__ == '__main__':
     
     parser.add_argument('-f', '--n_frames', type=int, 
                         default=90, help='number of frames')
-    parser.add_argument('-sf', '--save_frames', action='store_true', 
-                        default=False, help='if True, save all frames')
     
     args = parser.parse_args()
 

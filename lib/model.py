@@ -61,7 +61,7 @@ class Model3D(nn.Module):
         return params
 
     def forward(self, input_dict, h=224, w=None, 
-                ndc=True, pcd_size=None, pcd_scale=None,
+                ndc=True, pcd_size=None, pcd_scale=1,
                 rgb_only=False):
         """
         Args:
@@ -72,7 +72,7 @@ class Model3D(nn.Module):
                 src_z (float tensor, (bs, p, 1)): point depth.
                 src_uv (float tensor, (bs, p, 3)): point uv-coordinates.
                 n_pts ((optional) int tensor, (bs,)): number of points.
-                tgt_fovs ((optional) float tensor, (bs,)): target-view FOVs.
+                tgt_fovs ((optional) float tensor, (bs, v)): target-view FOVs.
                 style ((optional) float tensor, (bs, 3, h, w)): style images.
             h (int): height of rendered images.
             w (int): width of rendered images.
@@ -104,8 +104,6 @@ class Model3D(nn.Module):
             ('[ERROR] point sample size ({:d}) cannot exceed smallest '
              'point cloud size ({:d})'.format(pcd_size, n_pts.min())
             )
-        if pcd_scale is None:
-            pcd_scale = 1
         style = input_dict.get('style')
         tgt_fovs = input_dict.get(
             'tgt_fovs', fov.unsqueeze(-1).repeat(1, n_views)
