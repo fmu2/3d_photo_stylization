@@ -1,6 +1,7 @@
 import os
 import math
 import time
+import random
 import argparse
 
 import torch
@@ -104,9 +105,16 @@ def main(args):
     rgbs = (rgbs * 255).astype(np.uint8)
 
     # save
-    imageio.mimwrite(
-        os.path.join(save_path, 'video.mp4'), rgbs, fps=30, quality=8
-    ) 
+    if len(rgbs) > 1:
+        imageio.mimwrite(
+            os.path.join(save_path, 'out.mp4'), rgbs, fps=30, quality=8
+        )
+        for i in range(len(rgbs)):
+            rgb = Image.fromarray(rgbs[i])
+            rgb.save(os.path.join(save_path, '{:03d}.png'.format(i + 1)))
+    else:
+        rgb = Image.fromarray(rgbs[0])
+        rgb.save(os.path.join(save_path, 'out.png'))
 
     ###########################################################################
 

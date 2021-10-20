@@ -4,8 +4,6 @@ x=0.02
 y=0.02
 z=0.05
 
-z1=0; z2=$z
-
 for i in $(cat test/eval_ids.txt)
 do
     n=$(( $RANDOM % 4 ))
@@ -26,6 +24,6 @@ do
         -cam ken_burns \
         -x "$x1" "$x2" \
         -y "$y1" "$y2" \
-        -z "$z1" "$z2" \
+        -z 0 "$z" \
         -g $2
 done
