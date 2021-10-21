@@ -12,4 +12,6 @@ do
     	-f 1 \
     	-cam static \
     	-g $2
+
+    echo "$i done"
 done

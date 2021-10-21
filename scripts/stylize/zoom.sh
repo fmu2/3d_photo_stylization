@@ -17,4 +17,6 @@ do
         -cam zoom \
         -z "$z1" "$z2" \
         -g $2
+
+    echo "$i done"
 done

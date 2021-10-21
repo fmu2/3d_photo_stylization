@@ -22,4 +22,6 @@ do
     -y 0 0 \
     -z 0 "$z" \
     -g $1
+
+    echo "$i done"
 done

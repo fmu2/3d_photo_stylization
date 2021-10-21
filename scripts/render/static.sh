@@ -9,4 +9,6 @@ do
     -f 1 \
     -cam static \
     -g $1
+
+    echo "$i done"
 done

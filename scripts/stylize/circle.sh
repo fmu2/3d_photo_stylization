@@ -26,4 +26,6 @@ do
         -y "$y1" "$y2" \
         -z 0 "$z" \
         -g $2
+
+    echo "$i done"
 done
