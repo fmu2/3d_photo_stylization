@@ -37,6 +37,7 @@ def main(args):
 
         net_state = ckpt['netG'] if 'netG' in ckpt.keys() else ckpt['net']
         net.load_state_dict(net_state, strict=False)
+        net.eval()
         print('model loaded')
     except:
         raise ValueError(
@@ -124,7 +125,6 @@ def main(args):
         input_dict['style'] = style[None].cuda()            # (1, 3, h, w)
     
     # re-project and render
-    net.eval()
     t0 = time.time()
     with torch.no_grad():
         output_dict = net(

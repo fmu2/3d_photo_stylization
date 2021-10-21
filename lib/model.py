@@ -154,7 +154,7 @@ class Model3D(nn.Module):
         
         # rasterization / reconstruction
         for k in range(n_views):
-            fov = tgt_fovs[:, k]
+            tgt_fov = tgt_fovs[:, k]
             if self.decoder_up > 1:
                 xyz_ndc = xyz_ndc_list[-1] / pcd_scale
                 if ndc:
@@ -169,7 +169,7 @@ class Model3D(nn.Module):
                 # 2) decode 2D feature maps into RGB image
                 pred_dict = self.renderer(
                     new_xyz, up_feats if up_feats is not None else feats, 
-                    fov, h // self.decoder_up, w // self.decoder_up, 
+                    tgt_fov, h // self.decoder_up, w // self.decoder_up, 
                     return_uv=(not rgb_only)
                 )
                 pred_feats = pred_dict['data']
@@ -182,7 +182,7 @@ class Model3D(nn.Module):
                 if not rgb_only:
                     data = torch.cat([data, up_feats], 1)
                 pred_dict = self.renderer(
-                    new_xyz, data, fov, h, w, return_uv=(not rgb_only)
+                    new_xyz, data, tgt_fov, h, w, return_uv=(not rgb_only)
                 )
                 pred_feats = None
                 pred_rgb = pred_dict['data']
@@ -198,7 +198,7 @@ class Model3D(nn.Module):
             
             # rasterize RGB point cloud
             tgt_dict = self.renderer(
-                new_raw_xyz, raw_rgb, fov, h, w, denoise=True
+                new_raw_xyz, raw_rgb, tgt_fov, h, w, denoise=True
             ) 
             tgt_rgb_list.append(tgt_dict['data'])
 

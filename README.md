@@ -8,7 +8,7 @@ PyTorch implementation for 3D photo stylization from a single image. Code has be
 
 Our implementation follows a multi-stage pipeline.
 
-- **(TODO) Monocular depth estimation.** Given an RGB image, we run LeReS for depth and shape estimation. More precisely, the output of this step is a coarse depth map up to unknown scale at the same resolution as the input, along with the estimated field of view (FOV) under the pinhole camera model.
+- **(TODO) Monocular depth estimation.** Given an RGB image, we run LeReS for depth and shape estimation. More precisely, the output of this step is a coarse depth map up to unknown scale in the same size as the input, along with the estimated field of view (FOV) under the pinhole camera model.
 
 - **(TODO) Point cloud inpainting.** We apply the method of Shih et al. (casually known as 3DPhoto) to convert the input image and its estimated depth into a complete 3D point cloud. Specifically, 3DPhoto refines the depth map by sharpening depth discontinuities, lifts RGB pixels into a layered depth image (LDI), and performs context-aware color and depth inpainting to fill in the dissoccluded regions. The output of this step is an inpainted LDI. It is trivial to convert the LDI into a 3D point cloud given camera FOV.
 
