@@ -100,6 +100,11 @@ def main(args):
         Ms = torch.zeros(1, 3, 4)
         Ms[..., :3] += torch.eye(3)
 
+    sio.savemat(
+        os.path.join(save_path, 'views.mat'),
+        {'Ms': Ms.numpy(), 'fovs': fovs.numpy()}
+    )
+
     input_dict = {
         'src_rgb': rgb[None].cuda(),        # (1, 3, p)
         'src_uv': uv[None].cuda(),          # (1, p, 2)
@@ -129,11 +134,12 @@ def main(args):
     with torch.no_grad():
         output_dict = net(
             input_dict=input_dict, 
-            h=h // 2,
-            w=w // 2,
+            h=h // 2 if args.anti_aliasing else h,
+            w=w // 2 if args.anti_aliasing else w,
             ndc=args.ndc,
             pcd_size=args.pcd_size,
             pcd_scale=args.pcd_scale,
+            anti_aliasing=args.anti_aliasing,
             rgb_only=True
         )
     t1 = time.time()
@@ -176,7 +182,7 @@ if __name__ == '__main__':
                         help='output (vertical) field of view')
 
     parser.add_argument('-ndc', '--ndc', action='store_true',
-                        default=True, help='if True, convert to NDC space')
+                        help='if True, convert to NDC space')
     parser.add_argument('-ps', '--pcd_size', type=int, default=None,
                         help='point cloud size')
     parser.add_argument('-pc', '--pcd_scale', type=float, default=1,
@@ -191,14 +197,16 @@ if __name__ == '__main__':
                         help='camera motion')
 
     parser.add_argument('-x', '--x_lim', type=float, nargs='+', 
-                        default=[-0.05, 0.05], help='left / right bounds')
+                        default=[-0.02, 0.02], help='left / right bounds')
     parser.add_argument('-y', '--y_lim', type=float, nargs='+',
-                        default=[-0.05, 0.05], help='top / bottom bounds')
+                        default=[-0.02, 0.02], help='top / bottom bounds')
     parser.add_argument('-z', '--z_lim', type=float, nargs='+',
-                        default=[0, 0.15], help='near / far bounds')
+                        default=[0, 0.05], help='near / far bounds')
 
     parser.add_argument('-f', '--n_frames', type=int, 
                         default=90, help='number of frames')
+    parser.add_argument('-aa', '--anti_aliasing', action='store_true',
+                        help='if True, apply anti-aliasing')
     
     args = parser.parse_args()
 

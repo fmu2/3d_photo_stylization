@@ -74,7 +74,8 @@ class Renderer(nn.Module):
 
         self.denoiser = PartialMeanFilter(3)
 
-    def forward(self, xyz, data, fov, h, w, denoise=False, return_uv=False):
+    def forward(self, xyz, data, fov, h, w, anti_aliasing=True, 
+                denoise=False, return_uv=False):
         """
         Args:
             xyz (float tensor, (bs, p, 3)): point coordinates in view space.
@@ -82,6 +83,7 @@ class Renderer(nn.Module):
             fov (float tensor, (bs,)): vertical angular field of view (unit: rad).
             h (int): height of rendered data maps (unit: px).
             w (int): width of rendered data maps (unit: px).
+            anti_aliasing (bool): if True, apply anti-aliasing.
             denoise (bool): if True, apply denoising filter.
             return_uv (bool): if True, return visibility of points and 
                 their uv-coordinates following rasterization.
@@ -101,14 +103,16 @@ class Renderer(nn.Module):
         xyz = view2ndc(xyz, near, far, fov, w / h)
 
         # rasterization followed by anti-aliasing
-        h, w = h * self.anti_aliasing, w * self.anti_aliasing
+        h = h * self.anti_aliasing if anti_aliasing else h 
+        w = w * self.anti_aliasing if anti_aliasing else w
         data, conf, viz = self.splatter(xyz, data, h, w)
         mask = conf > 0
         if denoise:
             data, mask = self.denoiser(data, mask)
-        data = self.pool(data, mask)
+        if anti_aliasing:
+            data = self.pool(data, mask)
 
-        out_dict = {'data': data}
+        out_dict = {'data': data, 'mask': mask}
         if return_uv:
             uv = xyz[..., :2]
             out_dict['uv'] = uv

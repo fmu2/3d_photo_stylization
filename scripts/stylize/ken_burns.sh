@@ -19,6 +19,7 @@ do
         -ldi test/content/ldi/eval/$i.mat \
         -s test/style \
         -ns 130 \
+        -ndc \
         -pc 2 \
         -f 90 \
         -cam ken_burns \

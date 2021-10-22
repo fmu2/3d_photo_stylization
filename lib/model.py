@@ -62,7 +62,7 @@ class Model3D(nn.Module):
 
     def forward(self, input_dict, h=224, w=None, 
                 ndc=True, pcd_size=None, pcd_scale=1,
-                rgb_only=False):
+                anti_aliasing=True, rgb_only=False):
         """
         Args:
             input_dict (dict):
@@ -78,6 +78,7 @@ class Model3D(nn.Module):
             w (int): width of rendered images.
             ndc (bool): if True, construct point cloud in NDC space.
             pcd_size (int): number of points to draw for point cloud processing.
+            anti_aliasing (bool): if True, apply anti-aliasing.
             pcd_scale (float): point cloud scale.
             rgb_only (bool): if True, only return RGB images.
 
@@ -170,7 +171,7 @@ class Model3D(nn.Module):
                 pred_dict = self.renderer(
                     new_xyz, up_feats if up_feats is not None else feats, 
                     tgt_fov, h // self.decoder_up, w // self.decoder_up, 
-                    return_uv=(not rgb_only)
+                    anti_aliasing=anti_aliasing, return_uv=(not rgb_only)
                 )
                 pred_feats = pred_dict['data']
                 pred_rgb = self.decoder(pred_feats)
@@ -182,7 +183,8 @@ class Model3D(nn.Module):
                 if not rgb_only:
                     data = torch.cat([data, up_feats], 1)
                 pred_dict = self.renderer(
-                    new_xyz, data, tgt_fov, h, w, return_uv=(not rgb_only)
+                    new_xyz, data, tgt_fov, h, w, 
+                    anti_aliasing=anti_aliasing, return_uv=(not rgb_only)
                 )
                 pred_feats = None
                 pred_rgb = pred_dict['data']
@@ -198,7 +200,8 @@ class Model3D(nn.Module):
             
             # rasterize RGB point cloud
             tgt_dict = self.renderer(
-                new_raw_xyz, raw_rgb, tgt_fov, h, w, denoise=True
+                new_raw_xyz, raw_rgb, tgt_fov, h, w, 
+                anti_aliasing=anti_aliasing, denoise=True
             ) 
             tgt_rgb_list.append(tgt_dict['data'])
 

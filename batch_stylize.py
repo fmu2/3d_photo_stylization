@@ -99,6 +99,11 @@ def main(args):
         Ms = torch.zeros(1, 3, 4)
         Ms[..., :3] += torch.eye(3)
 
+    sio.savemat(
+        os.path.join(save_path, 'views.mat'),
+        {'Ms': Ms.numpy(), 'fovs': fovs.numpy()}
+    )
+
     rgb = rgb[None].cuda()          # (1, 3, p)
     uv = uv[None].cuda()            # (1, p, 2)
     z = z[None].cuda()              # (1, p, 1)
@@ -130,7 +135,8 @@ def main(args):
 
     fov = K[:, 0]               # input FOV
     n_views = Ms.size(1)        # number of views
-    h, w = h // 2, w // 2       # output size
+    h = h // 2 if args.anti_aliasing else h
+    w = w // 2 if args.anti_aliasing else w
 
     # prepare point cloud
     xyz = net.unprojector(uv, z, K)
@@ -191,7 +197,7 @@ def main(args):
                 pred_dict = net.renderer(
                     new_xyz, up_feats if up_feats is not None else feats, 
                     tgt_fov, h // net.decoder_up, w // net.decoder_up, 
-                    return_uv=False
+                    anti_aliasing=args.anti_aliasing, return_uv=False
                 )
                 pred_feats = pred_dict['data']
                 with torch.no_grad():
@@ -202,7 +208,8 @@ def main(args):
                 with torch.no_grad():
                     rgb = net.decoder(xyz_ndc_list, feats)
                 pred_dict = net.renderer(
-                    new_xyz, rgb, tgt_fov, h, w, return_uv=False
+                    new_xyz, rgb, tgt_fov, h, w, 
+                    anti_aliasing=args.anti_aliasing, return_uv=False
                 )
                 pred_rgb = pred_dict['data']
 
@@ -282,7 +289,7 @@ if __name__ == '__main__':
                         help='output (vertical) field of view')
 
     parser.add_argument('-ndc', '--ndc', action='store_true',
-                        default=True, help='if True, convert to NDC space')
+                        help='if True, convert to NDC space')
     parser.add_argument('-ps', '--pcd_size', type=int, default=None,
                         help='point cloud size')
     parser.add_argument('-pc', '--pcd_scale', type=float, default=1,
@@ -305,6 +312,8 @@ if __name__ == '__main__':
 
     parser.add_argument('-f', '--n_frames', type=int, 
                         default=90, help='number of frames')
+    parser.add_argument('-aa', '--anti_aliasing', action='store_true',
+                        help='if True, apply anti-aliasing')
     
     args = parser.parse_args()
 

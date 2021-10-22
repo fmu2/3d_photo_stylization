@@ -79,7 +79,7 @@ def main(args):
     # set up rendering utilities
     unprojector = Unprojector().cuda()
     view_transformer = ViewTransformer().cuda()
-    renderer = Renderer(anti_aliasing=args.anti_aliasing).cuda()
+    renderer = Renderer().cuda()
     
     # re-project and render
     t0 = time.time()
@@ -91,8 +91,9 @@ def main(args):
             xyz=new_xyz, 
             data=rgb, 
             fov=fovs[:, i], 
-            h=h // args.anti_aliasing, 
-            w=w // args.anti_aliasing, 
+            h=h // 2 if args.anti_aliasing else h, 
+            w=w // 2 if args.anti_aliasing else w, 
+            anti_aliasing=args.anti_aliasing,
             denoise=True
         )
         rgb_list.append(out_dict['data'])
@@ -128,8 +129,6 @@ if __name__ == '__main__':
     parser.add_argument('-ldi', '--ldi_path', type=str, 
                         help='LDI path')
 
-    parser.add_argument('-aa', '--anti_aliasing', type=int, default=1,
-                        help='supersampling rate for anti-aliasing')
     parser.add_argument('-fov', '--fov', type=float, default=None,
                         help='output (vertical) field of view')
     
@@ -140,14 +139,16 @@ if __name__ == '__main__':
                         help='camera motion')
     
     parser.add_argument('-x', '--x_lim', type=float, nargs='+', 
-                        default=[-0.05, 0.05], help='left / right bounds')
+                        default=[-0.02, 0.02], help='left / right bounds')
     parser.add_argument('-y', '--y_lim', type=float, nargs='+',
-                        default=[-0.05, 0.05], help='top / bottom bounds')
+                        default=[-0.02, 0.02], help='top / bottom bounds')
     parser.add_argument('-z', '--z_lim', type=float, nargs='+',
-                        default=[0, 0.15], help='near / far bounds')
+                        default=[0, 0.05], help='near / far bounds')
     
     parser.add_argument('-f', '--n_frames', type=int, 
                         default=90, help='number of frames')
+    parser.add_argument('-aa', '--anti_aliasing', action='store_true',
+                        help='if True, apply anti-aliasing')
     
     args = parser.parse_args()
 

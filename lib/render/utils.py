@@ -10,19 +10,18 @@ except ImportError:
         "Run 'python setup_render.py build_ext --inplace' first."
     )
 
-__all__ = ['view2ndc', 'ndc2view', 'render_point_cloud']
+__all__ = ['view2ndc', 'ndc2view', 'render_point_cloud', 'is_visible']
 
 
 class RenderPointCloud(Function):
     @staticmethod
-    def forward(ctx, xyz, data, h, w, refine_z_buffer=True):
+    def forward(ctx, xyz, data, h, w):
         """
         Args:
             xyz (float tensor, (bs, p, 3)): 3D point coordinates.
             data (float tensor, (bs, c + 1, p)): point-associated data.
             h (int): height of depth map.
             w (int): width of depth map.
-            refine_z_buffer (bool): if True, guard against shine-through effect.
 
         Returns:
             out (float tensor, (bs, c, h, w)): rendered feature maps.
@@ -35,9 +34,7 @@ class RenderPointCloud(Function):
         data = data.contiguous()
 
         z_buffer = ops.rasterize(xyz, h, w)
-        if refine_z_buffer:
-            ops.refine_z_buffer(z_buffer)
-
+        ops.refine_z_buffer(z_buffer)
         out, is_visible = ops.splat(data, xyz, z_buffer)
 
         ctx.save_for_backward(xyz, z_buffer)
@@ -119,27 +116,44 @@ def ndc2view(xyz, near, far, fov, ar=1):
     return xyz
 
 
-def render_point_cloud(xyz, data, h, w, refine_z_buffer=True):
+def render_point_cloud(xyz, data, h, w):
     """
-    Render a featurized point cloud to a novel view.
+    Render a point cloud.
     
     Args:
         xyz (float tensor, (bs, p, 3)): 3D point coordinates.
         data (float tensor, (bs, c, p)): point-associated data.
-        h (int): height of depth map.
-        w (int): width of depth map.
+        h (int): height of rendered output.
+        w (int): width of rendered output.
         refine_z_buffer (bool): if True, guard against shine-through effect.
 
     Returns:
-        render (float tensor, (bs, c, h, w)): rendered feature maps.
+        render (float tensor, (bs, c, h, w)): rendered data maps.
         conf (float tensor, (bs, 1, h, w)): confidence map.
         is_visible (bool tensor, (bs, p)): mask for visible points.
     """
     data = torch.cat([data, data.new_ones(data.size(0), 1, data.size(2))], 1)
     
-    out, is_visible = RenderPointCloud.apply(xyz, data, h, w, refine_z_buffer)
+    out, is_visible = RenderPointCloud.apply(xyz, data, h, w)
     
     render = out[:, :-1] / (out[:, -1:] + 1e-8)             # (bs, c, h, w)
     conf = out[:, -1:]                                      # (bs, 1, h, w)
-    
     return render, conf, is_visible
+
+
+def is_visible(xyz, h, w):
+    """
+    Check visibility of input points.
+
+    Args:
+        xyz (float tensor, (bs, p, 3)): 3D point coordinates.
+        h (int): height of rendered output.
+        w (int): width of rendered output.
+    
+    Returns:
+        conf (float tensor, (bs, 1, h, w)): confidence map.
+        is_visible (bool tensor, (bs, p)): mask for visible points.
+    """
+    data = xyz.new_ones(xyz.size(0), 1, xyz.size(1))
+    conf, is_visible = RenderPointCloud.apply(xyz, data, h, w)
+    return conf, is_visible

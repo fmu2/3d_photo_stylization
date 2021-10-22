@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import lpips
+
 
 class RMSE(nn.Module):
     """ Root mean square error """
@@ -73,3 +75,25 @@ class SSIM(nn.Module):
         ssim_map = tmp1 / tmp2
         ssim = ssim_map.mean()
         return ssim
+
+
+class LPIPS(nn.Module):
+    """ Learned perceptial image patch similarity """
+
+    def __init__(self, net='alex', calibrate=True):
+        super(LPIPS, self).__init__()
+
+        assert net in ('alex', 'vgg'), \
+            '[ERROR] invalid base network for LPIPS: {:s}'.format(net)
+
+        self.lpips = lpips.LPIPS(net=net, lpips=calibrate, spatial=True)
+
+    def forward(self, im1, im2, mask=None):
+        ## NOTE: input images are in [0, 1],
+        ## we set normalize=True to rescale input to [-1, 1]
+        pips = self.lpips(im1, im2, normalize=True)     # (bs, 1, h, w)
+        if mask is not None:
+            pips = (pips * mask).flatten(1).sum(-1)
+            pips = pips / mask.flatten(1).sum(-1)
+        pips = pips.mean()
+        return pips
