@@ -27,8 +27,8 @@ class Unprojector(nn.Module):
         Returns:
             xyz (float tensor, (bs, p, 3)): view-space xyz-coordinates of points.
         """
-        fx, fy = K[:, 1:2], K[:, 2:3]   # focal length
-        cx, cy = K[:, 3:4], K[:, 4:5]   # principal point
+        fx, fy = K[..., 1:2], K[..., 2:3]   # focal length
+        cx, cy = K[..., 3:4], K[..., 4:5]   # principal point
         if z.dim() == 3:
             z = z[..., 0]
         x = (uv[..., 0] - cx) * z / fx
@@ -43,7 +43,7 @@ class ViewTransformer(nn.Module):
     def __init__(self):
         super(ViewTransformer, self).__init__()
 
-    def forward(self, xyz, M):
+    def forward(self, xyz, M, inverse=False):
         """
         Args:
             xyz (float tensor, (bs, p, 3)): point coordinates in view space.
@@ -52,9 +52,13 @@ class ViewTransformer(nn.Module):
         Returns:
             xyz (float tensor, (bs, p, 3)): transformed point coordinates.
         """
-        M = M.transpose(2, 1)
-        R, t = M[:, :3], M[:, 3:]                       # (bs, 3/1, 3)
-        xyz = torch.matmul(xyz, R) + t                  # (bs, 3, p)
+        M = M.transpose(-1, -2)
+        R, t = M[..., :3, :], M[..., 3:, :]             # (bs, 3/1, 3)
+        if inverse:
+            R = R.transpose(-1, -2)
+            xyz = torch.matmul(xyz - t, R)              # (bs, 3, p)
+        else:
+            xyz = torch.matmul(xyz, R) + t              # (bs, 3, p)
         return xyz
 
 
@@ -70,7 +74,7 @@ class Renderer(nn.Module):
         if anti_aliasing > 1:
             self.pool = PartialAvgPool2d(anti_aliasing)
         else:
-            self.pool = lambda x, mask: x
+            self.pool = lambda x, mask: (x, mask)
 
         self.denoiser = PartialMeanFilter(3)
 
@@ -91,6 +95,7 @@ class Renderer(nn.Module):
         Returns:
             out_dict (dict):
                 data (float tensor, (bs, c, h, w)): rendered data maps.
+                mask (bool tensor, (bs, 1, h, w)): mask of valid pixels.
                 uv ((optional) float tensor, (bs, p, 2)): uv-coordinates of points.
                 viz ((optional) bool tensor, (bs, p)): visibility mask.
         """
@@ -110,7 +115,7 @@ class Renderer(nn.Module):
         if denoise:
             data, mask = self.denoiser(data, mask)
         if anti_aliasing:
-            data = self.pool(data, mask)
+            data, mask = self.pool(data, mask)
 
         out_dict = {'data': data, 'mask': mask}
         if return_uv:

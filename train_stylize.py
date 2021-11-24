@@ -26,9 +26,6 @@ def main(config):
 
     set_log_path(ckpt_path)
     writer = SummaryWriter(os.path.join(ckpt_path, 'tensorboard'))
-    yaml.dump(
-        config, open(os.path.join(ckpt_path, 'stylize-config.yaml'), 'w')
-    )
 
     ###########################################################################
     """ dataset """
@@ -123,6 +120,9 @@ def main(config):
         except:
             trainer = make_stylization_trainer(config)
             print('trainer initialized, train from scratch')
+        yaml.dump(
+            config, open(os.path.join(ckpt_path, 'stylize-config.yaml'), 'w')
+        )
 
     if itr0 == 0:
         ckpt = trainer.save(config, 0)
@@ -264,7 +264,7 @@ if __name__ == '__main__':
 
     # load config
     try:
-        config_path = os.path.join(ckpt_path, 'stylize-config.yaml')
+        config_path = os.path.join(ckpt_path, 'stylize-last.pth')
         check_file(config_path)
         config = load_config(config_path, mode='stylize')
         print('config loaded from checkpoint folder')

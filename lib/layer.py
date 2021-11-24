@@ -79,8 +79,8 @@ class PartialAvgPool2d(PartialConv2d):
         self.is_mean_filter = True
 
     def forward(self, x, mask=None):
-        x, _ = super(PartialAvgPool2d, self).forward(x, mask)
-        return x
+        x, mask = super(PartialAvgPool2d, self).forward(x, mask)
+        return x, mask
 
 
 def get_conv2d(in_dim, out_dim, kernel_size=1, stride=1, padding=0,

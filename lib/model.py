@@ -78,8 +78,8 @@ class Model3D(nn.Module):
             w (int): width of rendered images.
             ndc (bool): if True, construct point cloud in NDC space.
             pcd_size (int): number of points to draw for point cloud processing.
-            anti_aliasing (bool): if True, apply anti-aliasing.
             pcd_scale (float): point cloud scale.
+            anti_aliasing (bool): if True, apply anti-aliasing.
             rgb_only (bool): if True, only return RGB images.
 
         Returns:
@@ -91,13 +91,28 @@ class Model3D(nn.Module):
                 viz ((optional) bool tensor, (bs, v, p)): point visibility.
         """
         # parse input
-        K, Ms = input_dict['K'], input_dict['Ms']
+        K = input_dict['K']
         fov = K[:, 0]
+        Ms = input_dict['Ms']
         n_views = Ms.size(1)
+        tgt_fovs = input_dict.get(
+            'tgt_fovs', fov.unsqueeze(-1).repeat(1, n_views)
+        )
+        if w is None:
+            w = h
+        style = input_dict.get('style')
+        
+        # prepare point cloud
         rgb = input_dict['src_rgb']
-        uv, z = input_dict['src_uv'], input_dict['src_z']
+        if input_dict.get('src_xyz') is not None:
+            xyz = input_dict['src_xyz']
+            z = xyz[..., -1:]
+        else:
+            uv, z = input_dict['src_uv'], input_dict['src_z']
+            xyz = self.unprojector(uv, z, K)
+        
         n_pts = input_dict.get(
-            'n_pts', uv.new_ones(uv.size(0), dtype=torch.int) * uv.size(1)
+            'n_pts', xyz.new_ones(xyz.size(0), dtype=torch.int) * xyz.size(1)
         )
         if pcd_size is None:
             pcd_size = n_pts.min()
@@ -105,16 +120,7 @@ class Model3D(nn.Module):
             ('[ERROR] point sample size ({:d}) cannot exceed smallest '
              'point cloud size ({:d})'.format(pcd_size, n_pts.min())
             )
-        style = input_dict.get('style')
-        tgt_fovs = input_dict.get(
-            'tgt_fovs', fov.unsqueeze(-1).repeat(1, n_views)
-        )
-        if w is None:
-            w = h
-        output_dict = dict()
         
-        # prepare point cloud
-        xyz = self.unprojector(uv, z, K)
         raw_xyz, raw_rgb = xyz, rgb
         ## NOTE: assume that the ordering of points has been randomized
         ## (e.g., by random shuffling).
@@ -152,6 +158,7 @@ class Model3D(nn.Module):
         pred_feats_list = [] 
         tgt_rgb_list, pred_rgb_list = [], []
         uv_list, viz_list = [], []
+        output_dict = dict()
         
         # rasterization / reconstruction
         for k in range(n_views):

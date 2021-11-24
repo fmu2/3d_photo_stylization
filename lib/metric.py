@@ -11,10 +11,14 @@ class RMSE(nn.Module):
     def __init__(self):
         super(RMSE, self).__init__()
 
-    def forward(self, im1, im2):
+    def forward(self, im1, im2, mask=None):
         assert im1.shape == im2.shape, 'input shape mismatch'
 
-        rmse = (im1 - im2).pow(2).mean().sqrt()
+        rmse = (im1 - im2).pow(2)
+        if mask is not None:
+            rmse = (rmse * mask).flatten(1).sum(-1)
+            rmse = rmse / mask.flatten(1).sum(-1)
+        rmse = rmse.mean().sqrt()
         return rmse
 
 

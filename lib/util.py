@@ -20,7 +20,7 @@ def check_path(path):
         raise ValueError('path does not exist: {:s}'.format(path))
 
 
-def ensure_path(path, remove=True):
+def ensure_path(path, remove=False):
     if os.path.exists(path):
         if remove:
             if input('{:s} exists, remove? ([y]/n): '.format(path)) != 'n':

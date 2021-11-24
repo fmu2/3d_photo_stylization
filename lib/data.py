@@ -148,6 +148,22 @@ class PointCloudDataset(Dataset):
         self.y_lim = y_lim
         self.z_lim = z_lim
 
+        # extreme views
+        R = np.eye(3)[None].repeat(8, 0)
+        ts = -np.array(
+            [[x_lim[0], y_lim[0], z_lim[0]],
+             [x_lim[1], y_lim[0], z_lim[0]],
+             [x_lim[0], y_lim[1], z_lim[0]],
+             [x_lim[1], y_lim[1], z_lim[0]],
+             [x_lim[0], y_lim[0], z_lim[1]],
+             [x_lim[1], y_lim[0], z_lim[1]],
+             [x_lim[0], y_lim[1], z_lim[1]],
+             [x_lim[1], y_lim[1], z_lim[1]]]
+        )[..., None]
+        extreme_Ms = np.concatenate([R, ts], -1)
+        extreme_Ms = torch.from_numpy(extreme_Ms.astype(np.float32))
+        self.extreme_Ms = extreme_Ms
+
     def __len__(self):
         return len(self.data_list)
 
@@ -195,6 +211,7 @@ class PointCloudDataset(Dataset):
             'src_z': z,
             'K': K,
             'Ms': Ms,
+            'extreme_Ms': self.extreme_Ms,
             'tgt_fovs': tgt_fovs,
         }
         return lib

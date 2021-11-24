@@ -26,9 +26,6 @@ def main(config):
 
     set_log_path(ckpt_path)
     writer = SummaryWriter(os.path.join(ckpt_path, 'tensorboard'))
-    yaml.dump(
-        config, open(os.path.join(ckpt_path, 'inpaint-config.yaml'), 'w')
-    )
 
     ###########################################################################
     """ dataset """
@@ -76,6 +73,9 @@ def main(config):
     else:
         trainer = make_inpainting_trainer(config)
         print('trainer initialized, train from scratch')
+        yaml.dump(
+            config, open(os.path.join(ckpt_path, 'inpaint-config.yaml'), 'w')
+        )
 
     if itr0 == 0:
         ckpt = trainer.save(config, 0)
