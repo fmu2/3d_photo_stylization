@@ -1,13 +1,21 @@
 > ## 3D Photo Stylization: Learning to Generate Stylized Novel Views from a Single Image
-> ### [Paper](https://arxiv.org/abs/2112.00169) | [Project Page](https://pages.cs.wisc.edu/~fmu/style3d/) | [Video Demo](https://www.youtube.com/watch?v=GTE7QqeytGg&feature=youtu.be) <br>
+> ### [Paper](https://arxiv.org/abs/2112.00169) | [Project Page](https://pages.cs.wisc.edu/~fmu/style3d/) | [Poster](https://pages.cs.wisc.edu/~fmu/style3d/poster.pdf) | [Video Demo](https://www.youtube.com/watch?v=GTE7QqeytGg&feature=youtu.be) <br>
 > [Fangzhou Mu](https://pages.cs.wisc.edu/~fmu/)<sup>1</sup>,[Jian Wang](https://jianwang-cmu.github.io/) <sup>2#</sup>, [Yicheng Wu](https://yichengwu.github.io/)<sup>2#</sup>, [Yin Li](https://www.biostat.wisc.edu/~yli/)<sup>1#</sup> <br>
 > <sup>1</sup>University of Wisconsin-Madison, <sup>2</sup>Snap Research<br>
 > (<sup>#</sup>co-corresponding authors)<br>
 > **CVPR 2022 (Oral)**<br>
 
+<p align="center">
+  <img src="assets/teaser.png" alt="teaser" width="90%" height="90%">
+</p>
+
 ## Overview
 
 This is the official PyTorch implementation of our method for 3D Photo Stylization. Our method takes a single content image and an arbitrary style image, and outputs high-quality stylized renderings that are consistent across views. Our implementation follows a multi-stage pipeline outlined below.
+
+<p align="center">
+  <img src="assets/workflow.png" alt="workflow" width="90%" height="90%">
+</p>
 
 - **Monocular depth estimation.** Given a content image, we apply any off-the-shelf model (such as [DPT](https://github.com/isl-org/MiDaS) and [LeReS](https://github.com/aim-uofa/AdelaiDepth)) for depth estimation. The output is a depth image and may optionally include the estimated camera field of view (FOV).
 
@@ -15,7 +23,7 @@ This is the official PyTorch implementation of our method for 3D Photo Stylizati
 
 - **Point cloud encoding, stylization, rasterization and image decoding.** This is the core component of our method. We run a graph convolutional network (GCN) for feature extraction on the point cloud, apply an attention-based style transfer module inspired by [AdaAttN](https://github.com/Huage001/AdaAttN) for feature modulation, rasterize the featurized point cloud to novel views given camera pose and intrinsics, and decode the feature maps into stylized RGB images using a 2D neural renderer.
 
-Note that our repository does not include third-party code for depth estimation and 3D photo inpainting. Please use the sample LDIs and style images in the `test` folder to reproduce our results in the paper.
+Note that our repository does not include third-party code for depth estimation and 3D photo inpainting. Please use the sample LDIs and style images in the `samples` folder to reproduce our results in the paper.
 
 ## Quick Start
 
