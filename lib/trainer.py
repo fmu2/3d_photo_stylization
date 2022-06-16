@@ -9,6 +9,7 @@ from .metric import RMSE, PSNR, SSIM
 
 
 class InpaintingTrainer():
+
     def __init__(self, netG, netD, 
                  optimG, optimD, schedG, schedD,
                  render_loss, G_GAN_loss, D_GAN_loss, weights):
@@ -192,6 +193,7 @@ class InpaintingTrainer():
 
 
 class StylizationTrainer():
+    
     def __init__(self, net, optim, sched, loss):
 
         self.parallel = False

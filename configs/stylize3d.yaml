@@ -1,0 +1,58 @@
+3d: true
+
+stylizer:
+  arch: adaattn
+
+  adaattn:
+    vgg_layer: 3
+    vgg_pool: max
+    n_zip_layers: 2
+    pyramid: false
+
+loss:
+  terms: !!python/list [content, style, match]
+  weights: !!python/list [1, 0.3, 1]
+
+  content:
+    loss_type: l1
+    layers: !!python/list [3]
+    norm: adaattn
+    reduction: mean
+
+  style:
+    loss_type: mse
+    layers: !!python/list [2, 3]
+    stats: !!python/list [mean, std]
+    reduction: mean
+
+  match:
+    loss_type: l1
+
+data:
+  name: pcd
+  n_target_views: 2
+  x_lim: !!python/list [-0.05, 0.05]
+  y_lim: !!python/list [-0.05, 0.05]
+  z_lim: !!python/list [-0.05, 0.15]
+
+style:
+  name: wikiart
+  im_size: 256
+
+train:
+  batch_size: 8
+  n_itrs: 20000
+
+  h: 224
+  w: 224
+  pcd_size: 262144
+
+  optim: adam
+  lr: 1.e-4
+  beta1: 0.9
+  beta2: 0.999
+  decay_itrs: !!python/list [-1]
+  decay: 0.5
+
+freeze_enc: true
+freeze_dec: false

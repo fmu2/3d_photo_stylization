@@ -1,0 +1,86 @@
+3d: true
+ndc: true
+
+encoder:
+  arch: pcd
+
+  pcd:
+    n_levels: 2
+
+    aggregate: max
+    norm: batch
+    actv: relu
+    res: true
+
+    in_conv: mr
+    in_dim: 64
+    in_radius: 0.015
+    in_k: 16
+
+    block: mr
+    scale_factor: !!python/list [4, 4]
+    dims: !!python/list [128, 256]
+    depth: !!python/list [1, 1]
+    radius: !!python/list [[[0.015, 0.025]], [[0.025, 0.05]]]
+    k: !!python/list [[[16, 16]], [[16, 16]]]
+
+    out_relu: false
+    up: linear
+    
+decoder:
+  arch: unet
+
+  unet:
+    n_levels: 2
+    in_dim: 256
+    down: conv
+    down_actv: leaky_relu
+    up: conv
+    up_actv: relu
+    norm: null
+
+discriminator:
+  spectral_norm: true
+
+loss:
+  render:
+    terms: [pixel, content, match]
+    weights: [1, 1, 1]
+
+    pixel:
+      loss_type: l1
+
+    content:
+      loss_type: l1
+      layers: !!python/list [3]
+      norm: null
+
+    match:
+       loss_type: l1
+
+  ganD: hinge
+  ganG: hinge
+
+  weights: !!python/list [1, 0, 0]
+
+data:
+  name: pcd
+  n_target_views: 2
+  x_lim: !!python/list [-0.05, 0.05]
+  y_lim: !!python/list [-0.05, 0.05]
+  z_lim: !!python/list [-0.05, 0.15]
+
+train:
+  batch_size: 8
+  n_itrs: 20000
+
+  h: 224
+  w: 224
+  pcd_size: 262144
+
+  optim: adam
+  lr: 1.e-4
+  beta1: 0.9
+  beta2: 0.999
+  decay_itrs: !!python/list [-1]
+  decay: 0.5

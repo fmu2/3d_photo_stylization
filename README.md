@@ -1,58 +1,56 @@
-# Stylized 3D Photo from a Single Image
-
-## Introduction
-
-PyTorch implementation for 3D photo stylization from a single image. Code has been tested on python 3.7, pytorch 1.7.1, CUDA 10.1 and Ubuntu 16.04. This stable branch is for running ablation study and creating demos.
+> ## 3D Photo Stylization: Learning to Generate Stylized Novel Views from a Single Image
+> ### [Paper](https://arxiv.org/abs/2112.00169) | [Project Page](https://pages.cs.wisc.edu/~fmu/style3d/) | [Video Demo](https://www.youtube.com/watch?v=GTE7QqeytGg&feature=youtu.be) <br>
+> [Fangzhou Mu](https://pages.cs.wisc.edu/~fmu/)<sup>1</sup>,[Jian Wang](https://jianwang-cmu.github.io/) <sup>2#</sup>, [Yicheng Wu](https://yichengwu.github.io/)<sup>2#</sup>, [Yin Li](https://www.biostat.wisc.edu/~yli/)<sup>1#</sup> <br>
+> <sup>1</sup>University of Wisconsin-Madison, <sup>2</sup>Snap Research<br>
+> (<sup>#</sup>co-corresponding authors)<br>
+> **CVPR 2022 (Oral)**<br>
 
 ## Overview
 
-Our implementation follows a multi-stage pipeline.
+This is the official PyTorch implementation of our method for 3D Photo Stylization. Our method takes a single content image and an arbitrary style image, and outputs high-quality stylized renderings that are consistent across views. Our implementation follows a multi-stage pipeline outlined below.
 
-- **(TODO) Monocular depth estimation.** Given an RGB image, we run LeReS for depth and shape estimation. More precisely, the output of this step is a coarse depth map up to unknown scale in the same size as the input, along with the estimated field of view (FOV) under the pinhole camera model.
+- **Monocular depth estimation.** Given a content image, we apply any off-the-shelf model (such as [DPT](https://github.com/isl-org/MiDaS) and [LeReS](https://github.com/aim-uofa/AdelaiDepth)) for depth estimation. The output is a depth image and may optionally include the estimated camera field of view (FOV).
 
-- **(TODO) Point cloud inpainting.** We apply the method of Shih et al. (casually known as 3DPhoto) to convert the input image and its estimated depth into a complete 3D point cloud. Specifically, 3DPhoto refines the depth map by sharpening depth discontinuities, lifts RGB pixels into a layered depth image (LDI), and performs context-aware color and depth inpainting to fill in the dissoccluded regions. The output of this step is an inpainted LDI. It is trivial to convert the LDI into a 3D point cloud given camera FOV.
+- **Point cloud construction.** We apply [3D Photo Inpainting](https://github.com/vt-vl-lab/3d-photo-inpainting) to convert the content image and its estimated depth into a layered depth image (LDI). We further back-project the LDI pixels to 3D given the estimated camera FOV, and transform the resulting point cloud into normalized device coordinates (NDC).
 
-- **Learning encoder-decoder model for image reconstruction.** As in most image style transfer methods, we first train an encoder-decoder model for the task of image reconstruction. This model will later serve as the backbone for style transfer. Run `train_inpaint.py` to train the encoder-decoder model.
+- **Point cloud encoding, stylization, rasterization and image decoding.** This is the core component of our method. We run a graph convolutional network (GCN) for feature extraction on the point cloud, apply an attention-based style transfer module inspired by [AdaAttN](https://github.com/Huage001/AdaAttN) for feature modulation, rasterize the featurized point cloud to novel views given camera pose and intrinsics, and decode the feature maps into stylized RGB images using a 2D neural renderer.
 
-- **Stylization via feature modulation.** Once trained, the encoder-decoder model is kept frozen. A stylization module learns to blend the desired style into the content image by modulating the encoder output. Run `train_stylize.py` to train the stylization module.
+Note that our repository does not include third-party code for depth estimation and 3D photo inpainting. Please use the sample LDIs and style images in the `test` folder to reproduce our results in the paper.
 
 ## Quick Start
 
 ### Preliminaries
 
-- Clone this repo
+- **Clone the repository**
 ```shell
 git clone https://github.com/fmu2/3d_photo_stylization.git
 cd 3d_photo_stylization
 ```
 
-- Create conda environment and install required packages
+- **Set up the environment**
 ```shell
 conda create -n 3d_photo_stylization python=3.7
 conda activate 3d_photo_stylization
 conda install -c pytorch pytorch==1.7.1 torchvision==0.8.2 cudatoolkit=11.0
 conda install -c conda-forge tensorboard tensorboardx
 conda install -c anaconda scipy pyyaml
-```
-
-- (Optional) Install packages for model evaluation
-```shell
 conda install -c conda-forge ffmpeg imageio imageio-ffmpeg
 ```
 
-- (Optional) Install packages for point cloud generation and visualization
+- **(Optional) Install packages for point cloud visualization**
 ```shell
 conda install -c conda-forge plyfile matplotlib
 conda install -c open3d-admin open3d
 ```
 
-- Compile C++ and CUDA extension
+- **Compile C++ and CUDA extension**
 ```shell
 python setup_render.py build_ext --inplace
 python setup_pointnet2.py build_ext --inplace
 ```
 
-- Prepare datasets
+### Training
+- **(TODO) Prepare datasets**
 
 Download the pre-processed COCO2014 dataset [here](https://drive.google.com/drive/folders/1qtv-fBrCJXT93w0QoFbt8YqeI09pS8EM?usp=sharing) and the WikiArt dataset [here](https://drive.google.com/drive/folders/1cwjSJaNJyRqQI-2wmFWNwgxkN6pUOy6k?usp=sharing). Unzip the files.
 ```shell
@@ -68,7 +66,7 @@ cd ..
 
 Images from the COCO2014 training split are resized to 448 x 448 and converted into LDIs following the aforementioned steps. Each LDI (equivalently 3D point cloud) contains approximately 300K points. We use 80K LDIs for training and the remaining for validation. The raw WikiArt images are extremely large. We down-sample them to 512 x 512 and keep the original training and validation splits.
 
-- Recommended folder structure
+- **Recommended folder structure**
 ```
 3d_photo_stylization
 │   README.md
@@ -98,73 +96,85 @@ Images from the COCO2014 training split are resized to 448 x 448 and converted i
 │   │   │   │   XXX.jpg
 │   │   │   │   ...
 └───configs
-│   │   └───ablation/
-│   │   │   │   inpaint3d_r3_pixel_content.yaml
-│   │   │   │   inpaint3d_r3_pixel_content_match.yaml
+│   │   inpaint3d.yaml
+│   │   stylize3d.yaml
 │   │   │   │   ...
 └───log
 │   ...
 ```
+- **Two-stage training**
 
-### Training
-To train the encoder-decoder network for image reconstruction, run
+First, train the encoder-decoder network for view synthesis.
 ```shell
 python train_inpaint.py -d {data_path} -c configs/{file_name}.yaml -n {job_name} -g {gpu_id}
 ```
-The latest model checkpoint `inpaint-last.pth` and the config file `inpaint-config.yaml` will be saved at `log/{job_name}`.
+The latest model checkpoint `inpaint-last.pth` and the config file `inpaint-config.yaml` will be saved under `log/{job_name}`.
 
-To train the stylization module for style transfer, run
+Next, freeze the encoder, train the style transfer module and fine-tune the decoder.
 ```shell
 python train_stylize.py -d {data_path} -s {style_path} -c configs/{file_name}.yaml -n {job_name} -g {gpu_id}
 ```
-Note that the job name needs to exactly match that of a pre-trained image reconstruction model. The latest model checkpoint `stylize-last.pth` and the config file `stylize-config.yaml` will be saved at `log/{job_name}`.
+*Make sure that the two training stages share the same job name.* The latest model checkpoint `stylize-last.pth` and the config file `stylize-config.yaml` will be saved under `log/{job_name}`.
+
+### Pre-trained models
+
+Our pretrained models can be found in the `ckpt` folder. Use `ckpt/inpaint.pth` for view synthesis (without stylization), and `ckpt/stylize.pth` for stylization. 
 
 ### Evaluation
 
-- point cloud rendering
+-  **Novel view synthesis without stylization**
 
-We support real-time rasterization of the raw point cloud (i.e., without an encoder-decoder pass) for novel view synthesis. One can regard this as the rendering step of 3DPhoto. Run
+Our code supports rasterization of the input RGB point cloud without an encoder-decoder pass. This is similar to 3DPhoto except that we do not convert the point cloud into a mesh before rendering.
 ```shell
 python test_ldi_render.py -n {job_name} -g {gpu_id} -ldi {ldi_path} -cam {cam_motion} -x {x_bounds} -y {y_bounds} -z {z_bounds} -f {num_frames}
 ```
 
-The output video may be found at `test/out/ldi_render/{job_name}_{cam_motion}`.
+The output video will be saved under `test/out/ldi_render/{job_name}_{cam_motion}`.
 
-- novel view synthesis with the encoder-decoder model
-
-Our encoder-decoder backbone, when run without style input, is able to perform high-quality novel view synthesis at interactive rate. Run
+Alternatively, the encoder-decoder network is also capable of novel view synthesis (without stylization) when no style image is given. *This is mostly for diagnostic purpose and is not the intended usage of our model.*
 ```shell
-python test_ldi_model.py -n {job_name} -g {gpu_id} -ldi {ldi_path} -cam {cam_motion} -x {x_bound} -y {y_bound} -z {z_bound} -f {num_frames}
+python test_ldi_model.py -n {job_name} -g {gpu_id} -m {model_path} -ldi {ldi_path} -cam {cam_motion} -x {x_bound} -y {y_bound} -z {z_bound} -f {num_frames}
 ```
 
-When input image size exceeds 448, use the `-pc` option to re-scale the point cloud. For example, if the input image is 1080 x 720, add `-pc 2` to the command above for better result.
+The output video will be saved at `test/out/ldi_model/{job_name}_{cam_motion}`.
 
-Note that this is an intermediate step of our style transfer pipeline and is not optimized for synthesis quality. Running this code will also generate the raw point cloud rendering (see above) for reference. The output videos may be found at `test/out/ldi_model/{job_name}_{cam_motion}`.
+- **Stylized novel view synthesis**
 
-- style transfer
-
-This is our main objective. Given an inpainted 3D point cloud and a style image, our model synthesizes at interactive rate a stylized 3D photo that is both perceptually pleasing and geometrically consistent. Run
+To synthesizes a stylized 3D photo, run
 ```shell
-python test_ldi_model.py -n {job_name} -g {gpu_id} -ldi {ldi_path} -s {style_path} -ss {style_size} -cam {cam_motion} -x {x_bound} -y {y_bound} -z {z_bound} -f {num_frames}
+python test_ldi_model.py -n {job_name} -g {gpu_id} -ldi {ldi_path} -s {style_path} -ss {style_size} -cam {cam_motion} -x {x_bound} -y {y_bound} -z {z_bound} -f {num_frames} -ndc
 ```
+The output video will be saved under `test/out/ldi_model/{job_name}_{style_name}_{cam_motion}`.
 
-See above for how to properly set the `-pc` option.
-
-Running this code will also generate the raw point cloud rendering (see above) for reference. The output videos may be found at `test/out/ldi_model/{job_name}_{style_name}_{cam_motion}`.
+Importantly, re-scale the point cloud for better results. This can be accomplished using the `-pc` flag. For example, `-pc 2` works well for content images of size 1080x720.
 
 ### Point cloud visualization
 
-To visualize an inpainted 3D point cloud, run
+To save an inpainted point cloud (without normalization), run
 ```shell
 python test_ldi_pcd.py -n {job_name} -ldi {ldi_path}
 ```
 
-One may also visualize the point cloud in NDC space by running
+To visualize an inpainted point cloud in NDC space, run
 ```shell
 python test_ldi_pcd.py -n {job_name} -ldi {ldi_path} -plot -ds 10
 ```
 
-The saved point cloud (in `.ply` format) and NDC-space visualization (in `.png` format) may be found at `test/out/ldi_pcd/{job_name}`.
+The point cloud (in `.ply` format) and its NDC-space visualization (in `.png` format) will be saved under `test/out/ldi_pcd/{job_name}`.
+
+### Extension for multi-view input
+
+Our method readily supports stylized novel view synthesis given multiple input views. Following [StyleScene](https://github.com/hhsinping/stylescene), we provide selected input views, their associated camera poses and depth maps, and a pre-defined camera trajectory for each scene in the Tanks and Temples dataset.
+
+To synthesize novel views without stylization, run
+```shell
+python mvs_render.py -n {job_name} -g {gpu_id} -d {data_path}
+```
+
+To synthesize stylized novel views, run
+```shell
+python test_mvs.py -n {job_name} -g {gpu_id} -m {model_path} -d {data_path} -s {style_path} -ss {style_size} -ndc
+```
 
 ## Contact
 [Fangzhou Mu](http://pages.cs.wisc.edu/~fmu/) (fmu2@wisc.edu)
@@ -187,19 +197,13 @@ Our code is inspired by the following repos:
 * stylescene <https://github.com/hhsinping/stylescene>
 * synsin <https://github.com/facebookresearch/synsin>
 
-## References
+## Reference
 ```
-@inproceedings{Wei2021CVPR,
- author = {Yin, Wei and Zhang, Jianming and Wang, Oliver and Niklaus, Simon and Mai, Long and Chen, Simon and Shen, Chunhua},
-  title = {Learning to Recover 3D Scene Shape from a Single Image},
-  booktitle = {IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
-  year = {2021}
-}
-
-@inproceedings{Shih3DP20,
-  author = {Shih, Meng-Li and Su, Shih-Yang and Kopf, Johannes and Huang, Jia-Bin},
-  title = {3D Photography using Context-aware Layered Depth Inpainting},
-  booktitle = {IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
-  year = {2020}
+@inproceedings{mu20223d,
+  title={3D Photo Stylization: Learning to Generate Stylized Novel Views from a Single Image},
+  author={Mu, Fangzhou and Wang, Jian and Wu, Yicheng and Li, Yin},
+  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  pages={16273--16282},
+  year={2022}
 }
 ```
