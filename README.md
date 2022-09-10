@@ -60,7 +60,7 @@ python setup_pointnet2.py build_ext --inplace
 ### Training
 - **(TODO) Prepare datasets**
 
-Download the pre-processed COCO2014 dataset [here](https://drive.google.com/drive/folders/1qtv-fBrCJXT93w0QoFbt8YqeI09pS8EM?usp=sharing) and the WikiArt dataset [here](https://drive.google.com/drive/folders/1cwjSJaNJyRqQI-2wmFWNwgxkN6pUOy6k?usp=sharing). Unzip the files.
+Download the pre-processed COCO2014 dataset [here](https://drive.google.com/drive/folders/1izrDR6QILW5n7eon1mAhN6r2RuSEmwYL?usp=sharing) and the WikiArt dataset [here](https://www.kaggle.com/c/painter-by-numbers). Unzip the files.
 ```shell
 cd coco_pcd
 tar -xvzf train.tar.gz
